@@ -12,7 +12,8 @@
   },
   "dependencies": {
     "@cf-wasm/photon": "^0.3.4",
+    "@vercel/analytics": "^2.0.1",
+    "@vercel/speed-insights": "^2.0.0",
     "webp-wasm": "^1.0.6"
-  },
-  "devDependencies": {}
+  }
 }

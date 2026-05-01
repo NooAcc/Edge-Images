@@ -67,6 +67,13 @@ lib/process-image.js
 - Frees Photon images in `finally` paths.
 - Encodes quality-aware WebP via `webp-wasm`, with Photon WebP fallback.
 
+`index.html` and `docs/index.html`
+
+- Serve the static homepage and documentation page.
+- Include Vercel Web Analytics through `/_vercel/insights/script.js`.
+- Include Vercel Speed Insights through `/_vercel/speed-insights/script.js`.
+- These scripts become active after the matching Vercel project features are enabled in the dashboard.
+
 ## Request Flow
 
 ```text

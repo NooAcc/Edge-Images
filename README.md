@@ -63,7 +63,23 @@ IMAGE_URL_ALLOWLIST=example.com,trusted-cdn.com
 
 每个配置的域名会同时允许该域名本身和所有子域名。如果 `IMAGE_URL_ALLOWLIST` 为空或未设置，服务会以开放图片代理的方式运行。
 
-### 4. 执行部署
+### 4. 启用 Vercel Analytics 和 Speed Insights
+
+项目已安装并接入：
+
+```text
+@vercel/analytics
+@vercel/speed-insights
+```
+
+静态页面中已经包含 Vercel Web Analytics 与 Speed Insights 的采集脚本。部署到 Vercel 后，还需要在项目控制台中启用对应功能：
+
+1. 打开 Vercel 项目。
+2. 进入 **Analytics**，启用 Web Analytics。
+3. 进入 **Speed Insights**，启用 Speed Insights。
+4. 重新部署项目，等待 Vercel 控制台开始展示访问和性能数据。
+
+### 5. 执行部署
 
 可以在 Vercel 控制台中部署，也可以使用 Vercel CLI：
 
@@ -77,7 +93,7 @@ vercel deploy
 vercel deploy --prod
 ```
 
-### 5. 验证部署
+### 6. 验证部署
 
 打开生成的域名查看首页：
 
@@ -205,6 +221,8 @@ X-Processing-Error: <short error message>
 ## 实现说明
 
 `@cf-wasm/photon` 用于图片解码和几何变换。当前发布的 Photon WebP 方法不暴露质量参数，因此生产编码器会优先使用 `webp-wasm` 输出质量可控的 WebP；如果该编码器不可用，则回退到 Photon 的 `get_bytes_webp()`。
+
+首页和文档页包含 Vercel Web Analytics 与 Speed Insights 脚本，用于采集页面访问和性能指标。实际数据展示需要在 Vercel 项目控制台中启用对应功能。
 
 更多文档：
 
