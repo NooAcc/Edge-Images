@@ -13,8 +13,6 @@
 
 ## 快速开始
 
-Vercel 部署使用 Node.js 22.x。项目已通过 `package.json` 固定该版本，避免 Vercel 选择当前默认的 Node.js 24.x 运行时。
-
 ```shell
 npm install
 npm test
@@ -53,15 +51,7 @@ git push -u origin main
 2. 点击 **Add New...**，选择 **Project**。
 3. 选择对应的 GitHub 仓库。
 4. Framework Preset 保持默认的 **Other**。
-5. 确认 Node.js 版本由 `package.json` 控制：
-
-```json
-{
-  "engines": {
-    "node": "22.x"
-  }
-}
-```
+5. Node.js 运行时使用 Vercel 项目默认设置。
 
 ### 3. 配置环境变量
 

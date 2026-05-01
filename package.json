@@ -4,9 +4,6 @@
   "private": true,
   "type": "module",
   "description": "Vercel Node.js image processing API powered by @cf-wasm/photon.",
-  "engines": {
-    "node": "22.x"
-  },
   "scripts": {
     "test": "node test/run-tests.js",
     "test:unit": "node test/run-unit-tests.js",

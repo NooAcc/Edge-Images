@@ -127,17 +127,7 @@ Unexpected early error -> 500 JSON
 
 ## Deployment
 
-The project pins the Vercel runtime to Node.js 22.x through `package.json`:
-
-```json
-{
-  "engines": {
-    "node": "22.x"
-  }
-}
-```
-
-This keeps deployments on a stable LTS runtime for this service and avoids Node.js 24 runtime deprecation noise from platform-level code.
+The project does not pin a Node.js version in `package.json`; Vercel uses the project default Node.js runtime.
 
 `vercel.json` configures only function duration:
 
@@ -151,4 +141,4 @@ This keeps deployments on a stable LTS runtime for this service and avoids Node.
 }
 ```
 
-Vercel still automatically applies Node.js 22 minor and patch updates.
+Runtime selection can be changed in the Vercel project settings if a deployment needs a specific Node.js version.
