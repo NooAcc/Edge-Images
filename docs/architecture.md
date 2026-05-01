@@ -70,6 +70,7 @@ lib/process-image.js
 `index.html` and `docs/index.html`
 
 - Serve the static homepage and documentation page.
+- Initialize `window.va` and `window.si` queues before Vercel scripts load.
 - Include Vercel Web Analytics through `/_vercel/insights/script.js`.
 - Include Vercel Speed Insights through `/_vercel/speed-insights/script.js`.
 - These scripts become active after the matching Vercel project features are enabled in the dashboard.

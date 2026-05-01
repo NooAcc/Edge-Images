@@ -222,7 +222,7 @@ X-Processing-Error: <short error message>
 
 `@cf-wasm/photon` 用于图片解码和几何变换。当前发布的 Photon WebP 方法不暴露质量参数，因此生产编码器会优先使用 `webp-wasm` 输出质量可控的 WebP；如果该编码器不可用，则回退到 Photon 的 `get_bytes_webp()`。
 
-首页和文档页包含 Vercel Web Analytics 与 Speed Insights 脚本，用于采集页面访问和性能指标。实际数据展示需要在 Vercel 项目控制台中启用对应功能。
+首页和文档页会初始化 Vercel Web Analytics 与 Speed Insights 的客户端队列，并加载对应采集脚本，用于采集页面访问和性能指标。实际数据展示需要在 Vercel 项目控制台中启用对应功能。
 
 更多文档：
 

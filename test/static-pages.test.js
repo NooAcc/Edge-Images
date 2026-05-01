@@ -3,8 +3,12 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const OBSERVABILITY_SNIPPETS = [
+  "window.va",
+  "window.vaq",
   '/_vercel/insights/script.js',
   'data-sdkn="@vercel/analytics"',
+  "window.si",
+  "window.siq",
   '/_vercel/speed-insights/script.js',
   'data-sdkn="@vercel/speed-insights"'
 ];
