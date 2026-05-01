@@ -1,0 +1,21 @@
+{
+  "name": "vercel-edge-images",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Vercel Node.js image processing API powered by @cf-wasm/photon.",
+  "engines": {
+    "node": "22.x"
+  },
+  "scripts": {
+    "test": "node test/run-tests.js",
+    "test:unit": "node test/run-unit-tests.js",
+    "test:system": "node test/run-system-tests.js",
+    "vercel:dev": "vercel dev"
+  },
+  "dependencies": {
+    "@cf-wasm/photon": "^0.3.4",
+    "webp-wasm": "^1.0.6"
+  },
+  "devDependencies": {}
+}

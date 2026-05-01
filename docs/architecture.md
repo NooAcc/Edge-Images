@@ -1,0 +1,154 @@
+# Architecture
+
+## Goals
+
+The service is a small Vercel Node.js API that behaves like a dynamic image CDN:
+
+- Fetch a third-party source image.
+- Apply bounded transforms.
+- Return WebP output.
+- Keep memory and CPU use predictable under Vercel Hobby limits.
+- Remain easy to migrate because all image work is WASM-based.
+
+## Module Map
+
+```text
+api/image.js
+lib/parse-params.js
+lib/fetch-image.js
+lib/image-geometry.js
+lib/process-image.js
+```
+
+`api/image.js`
+
+- Vercel function entrypoint.
+- Validates `GET` requests.
+- Sends JSON errors for bad parameters and failed source fetches.
+- Sends WebP success responses with cache headers.
+- Falls back to the original source bytes when processing fails after fetch.
+
+`lib/parse-params.js`
+
+- Normalizes `req.query` values.
+- Requires an absolute `http` or `https` `url`.
+- Enforces `IMAGE_URL_ALLOWLIST` when configured.
+- Clamps `width` and `height` to `1024`.
+- Clamps `quality` to `1..100`.
+- Defaults invalid `fit` to `scale-down`.
+- Defaults invalid `background` to white.
+
+`lib/fetch-image.js`
+
+- Uses `fetch` plus `AbortController`.
+- Defaults to an 8 second timeout.
+- Rejects non-2xx responses.
+- Rejects non-image content types.
+- Rejects source payloads above 15 MB to keep memory bounded.
+
+`lib/url-allowlist.js`
+
+- Parses `IMAGE_URL_ALLOWLIST` or legacy `ALLOWED_IMAGE_HOSTS`.
+- Treats each configured domain as allowing that domain and all of its subdomains.
+- Accepts legacy wildcard or URL-shaped entries by normalizing them back to the hostname.
+- Keeps allowlist enforcement disabled when no rules are configured, preserving the original open proxy behavior unless the deployment opts in.
+
+`lib/image-geometry.js`
+
+- Contains pure transform planning logic.
+- Keeps output dimensions under `1024 x 1024`.
+- Uses source-side cropping for `cover` to avoid huge intermediate resized images.
+
+`lib/process-image.js`
+
+- Lazily imports `@cf-wasm/photon/node`.
+- Decodes the source image with `PhotonImage.new_from_byteslice`.
+- Applies orientation first, then fit geometry.
+- Frees Photon images in `finally` paths.
+- Encodes quality-aware WebP via `webp-wasm`, with Photon WebP fallback.
+
+## Request Flow
+
+```text
+GET /api/image
+  -> parseParams()
+       -> URL allowlist check
+  -> fetchImage()
+  -> processImage()
+       -> Photon decode
+       -> rotate / flip
+       -> fit transform
+       -> WebP encode
+       -> Photon free()
+  -> image/webp response
+```
+
+Failure flow:
+
+```text
+Parameter error        -> 400 JSON
+Fetch error            -> 502 JSON
+Processing error       -> 200 original bytes + X-Processing-Error
+Unexpected early error -> 500 JSON
+```
+
+## Fit Modes
+
+`scale-down`
+
+- Uses the requested box if provided.
+- Uses the `1024 x 1024` max box if no dimensions are provided.
+- Never enlarges the source image.
+
+`contain` and `pad`
+
+- Resize proportionally to fit inside the requested box.
+- Create the exact target canvas.
+- Fill surrounding space with the configured background.
+
+`cover`
+
+- Center-crop the source to the target aspect ratio first.
+- Resize the cropped source to the exact requested box.
+- This avoids creating very large intermediate images for extreme aspect ratios.
+
+`crop`
+
+- Resize directly to the target box without preserving source aspect ratio.
+
+## Resource Controls
+
+- Optional source URL allowlist through `IMAGE_URL_ALLOWLIST`.
+- Output dimensions are capped at `1024 x 1024`.
+- Source response body is capped at 15 MB.
+- Source fetch timeout is 8 seconds.
+- Photon images are explicitly freed after use.
+- The Vercel function is configured with `maxDuration: 10`.
+
+## Deployment
+
+The project pins the Vercel runtime to Node.js 22.x through `package.json`:
+
+```json
+{
+  "engines": {
+    "node": "22.x"
+  }
+}
+```
+
+This keeps deployments on a stable LTS runtime for this service and avoids Node.js 24 runtime deprecation noise from platform-level code.
+
+`vercel.json` configures only function duration:
+
+```json
+{
+  "functions": {
+    "api/image.js": {
+      "maxDuration": 10
+    }
+  }
+}
+```
+
+Vercel still automatically applies Node.js 22 minor and patch updates.

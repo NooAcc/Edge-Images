@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>使用文档 - Vercel Edge Images</title>
+    <meta name="description" content="Vercel Edge Images 图片处理 API 使用文档。">
+    <style>
+      :root {
+        --ink: #1f2933;
+        --muted: #52616f;
+        --line: #d8e0e8;
+        --page: #f6f8fb;
+        --panel: #ffffff;
+        --accent: #087f8c;
+        --code: #18212f;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--page);
+        color: var(--ink);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+        line-height: 1.65;
+      }
+
+      .shell {
+        width: min(960px, calc(100% - 32px));
+        margin: 0 auto;
+      }
+
+      header {
+        border-bottom: 1px solid var(--line);
+        background: #ffffff;
+      }
+
+      .nav {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        min-height: 64px;
+        gap: 16px;
+      }
+
+      a {
+        color: #065c66;
+      }
+
+      .brand {
+        color: var(--ink);
+        font-weight: 760;
+        text-decoration: none;
+      }
+
+      main {
+        padding: 48px 0 72px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(34px, 6vw, 56px);
+        line-height: 1.08;
+        letter-spacing: 0;
+      }
+
+      .lead {
+        max-width: 720px;
+        margin: 18px 0 0;
+        color: var(--muted);
+        font-size: 18px;
+      }
+
+      section {
+        margin-top: 42px;
+      }
+
+      h2 {
+        margin: 0 0 14px;
+        font-size: 24px;
+      }
+
+      .panel {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        padding: 20px;
+      }
+
+      pre {
+        margin: 0;
+        overflow-x: auto;
+        border-radius: 8px;
+        background: var(--code);
+        color: #e9f1f7;
+        padding: 16px;
+      }
+
+      code {
+        font-family:
+          "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+        font-size: 14px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        overflow: hidden;
+      }
+
+      th,
+      td {
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--line);
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        background: #eef4f7;
+        font-size: 14px;
+      }
+
+      tr:last-child td {
+        border-bottom: 0;
+      }
+
+      ul {
+        padding-left: 20px;
+      }
+
+      footer {
+        border-top: 1px solid var(--line);
+        padding: 24px 0;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      @media (max-width: 720px) {
+        .nav {
+          align-items: flex-start;
+          flex-direction: column;
+          padding: 14px 0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="shell nav">
+        <a class="brand" href="/">Vercel Edge Images</a>
+        <a href="/">返回首页</a>
+      </div>
+    </header>
+
+    <main class="shell">
+      <h1>使用文档</h1>
+      <p class="lead">
+        通过 <code>/api/image</code> 接口传入远程图片 URL 和处理参数，服务会返回经过缩放、
+        裁剪或填充后的 WebP 图片，并自动限制输出尺寸不超过 1024 x 1024。
+      </p>
+
+      <section>
+        <h2>快速调用</h2>
+        <pre><code>/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&amp;width=800&amp;height=600&amp;fit=cover</code></pre>
+      </section>
+
+      <section>
+        <h2>HTML 示例</h2>
+        <pre><code>&lt;img
+  src="/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&amp;width=800&amp;height=600&amp;fit=cover"
+  alt=""
+&gt;</code></pre>
+      </section>
+
+      <section>
+        <h2>参数说明</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>参数</th>
+              <th>说明</th>
+              <th>默认值</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>url</code></td>
+              <td>必填，完整 HTTP 或 HTTPS 图片地址，需要 URL 编码。</td>
+              <td>无</td>
+            </tr>
+            <tr>
+              <td><code>width</code></td>
+              <td>目标宽度，最大 1024。仅传宽度时，高度按比例推断。</td>
+              <td>按源图推断</td>
+            </tr>
+            <tr>
+              <td><code>height</code></td>
+              <td>目标高度，最大 1024。仅传高度时，宽度按比例推断。</td>
+              <td>按源图推断</td>
+            </tr>
+            <tr>
+              <td><code>fit</code></td>
+              <td><code>scale-down</code>、<code>contain</code>、<code>cover</code>、<code>pad</code>、<code>crop</code>。</td>
+              <td><code>scale-down</code></td>
+            </tr>
+            <tr>
+              <td><code>quality</code></td>
+              <td>WebP 输出质量，范围 1 到 100。</td>
+              <td><code>85</code></td>
+            </tr>
+            <tr>
+              <td><code>background</code></td>
+              <td>填充背景色，格式为 RRGGBB，适用于 <code>contain</code> 和 <code>pad</code>。</td>
+              <td><code>FFFFFF</code></td>
+            </tr>
+            <tr>
+              <td><code>rotate</code></td>
+              <td>旋转角度，支持 90、180、270。</td>
+              <td>不旋转</td>
+            </tr>
+            <tr>
+              <td><code>flip</code></td>
+              <td>翻转方向，支持 <code>h</code>、<code>v</code>、<code>hv</code>。</td>
+              <td>不翻转</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>常用场景</h2>
+        <div class="panel">
+          <ul>
+            <li>卡片缩略图：<code>width=640&amp;height=360&amp;fit=cover</code></li>
+            <li>头像：<code>width=256&amp;height=256&amp;fit=scale-down</code></li>
+            <li>商品图：<code>width=800&amp;height=800&amp;fit=pad&amp;background=FFFFFF</code></li>
+            <li>低带宽预览：<code>width=480&amp;quality=50</code></li>
+          </ul>
+        </div>
+      </section>
+
+      <section>
+        <h2>源图域名白名单</h2>
+        <div class="panel">
+          <p>生产环境建议配置 <code>IMAGE_URL_ALLOWLIST</code>，限制接口只能下载可信域名下的图片。</p>
+          <pre><code>IMAGE_URL_ALLOWLIST=example.com,trusted-cdn.com</code></pre>
+          <p>每个条目只需要写域名。配置 <code>example.com</code> 后，<code>example.com</code> 和 <code>*.example.com</code> 都会通过白名单。</p>
+          <ul>
+            <li><code>example.com</code>：允许根域名和所有子域名。</li>
+            <li><code>trusted-cdn.com</code>：允许该域名及其所有子域名。</li>
+            <li><code>*</code>：允许所有域名，仅建议本地开发使用。</li>
+          </ul>
+          <p>未配置该变量时，白名单不启用，以保持原有开放图片代理行为。</p>
+        </div>
+      </section>
+
+      <section>
+        <h2>响应与错误</h2>
+        <div class="panel">
+          <p>成功处理后返回 <code>Content-Type: image/webp</code>。</p>
+          <p>参数错误返回 400，源图下载失败返回 502。源图已下载但处理失败时，接口会透传原图，并添加 <code>X-Processing-Error</code> 响应头。</p>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="shell">缓存策略：浏览器 1 天，Vercel CDN 7 天。</div>
+    </footer>
+  </body>
+</html>
