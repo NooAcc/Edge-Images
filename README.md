@@ -1,19 +1,19 @@
 # Vercel Edge Images
 
-A Vercel Node.js Serverless Function that fetches a remote image, applies bounded resizing/cropping/padding transforms, and returns optimized WebP output.
+一个运行在 Vercel Node.js Serverless Functions 上的图片处理服务。它会下载远程图片，按参数执行受控的缩放、裁剪、填充等处理，并返回优化后的 WebP 图片。
 
-The implementation follows the project requirements in `Vercel Edge Images.md`:
+本实现遵循 `Vercel Edge Images.md` 中的项目需求：
 
-- `GET /api/image` accepts Cloudflare Images-style query parameters.
-- Output is WebP by default with quality `85`.
-- Output dimensions are always capped at `1024 x 1024`.
-- Source downloads use an 8 second timeout.
-- Processing failures fall back to the original downloaded image.
-- Responses include CDN-friendly cache headers.
+- `GET /api/image` 接收类似 Cloudflare Images 风格的查询参数。
+- 默认输出 WebP，质量为 `85`。
+- 输出尺寸始终限制在 `1024 x 1024` 以内。
+- 源图片下载超时时间为 8 秒。
+- 图片处理失败时会降级返回已下载的原图。
+- 响应包含适合 CDN 缓存的响应头。
 
-## Quick Start
+## 快速开始
 
-Use Node.js 22.x for Vercel deployments. The project pins this through `package.json` so Vercel does not select the current default Node.js 24.x runtime.
+Vercel 部署使用 Node.js 22.x。项目已通过 `package.json` 固定该版本，避免 Vercel 选择当前默认的 Node.js 24.x 运行时。
 
 ```shell
 npm install
@@ -21,23 +21,23 @@ npm test
 npm run vercel:dev
 ```
 
-Optional source URL allowlist:
+可选的源图片域名白名单：
 
 ```shell
 IMAGE_URL_ALLOWLIST=example.com,trusted-cdn.com
 ```
 
-Local endpoint:
+本地接口示例：
 
 ```text
 http://localhost:3000/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&width=800&height=600&fit=cover
 ```
 
-## Deploy to Vercel
+## 部署到 Vercel
 
-### 1. Push the project to GitHub
+### 1. 推送项目到 GitHub
 
-Initialize Git, commit the project, and push it to a GitHub repository:
+初始化 Git，提交项目，并推送到 GitHub 仓库：
 
 ```shell
 git init -b main
@@ -47,13 +47,13 @@ git remote add origin https://github.com/<your-name>/<your-repo>.git
 git push -u origin main
 ```
 
-### 2. Import the repository in Vercel
+### 2. 在 Vercel 中导入仓库
 
-1. Open the Vercel dashboard.
-2. Click **Add New...** and choose **Project**.
-3. Select the GitHub repository.
-4. Keep the default framework preset as **Other**.
-5. Confirm that the Node.js version is controlled by `package.json`:
+1. 打开 Vercel 控制台。
+2. 点击 **Add New...**，选择 **Project**。
+3. 选择对应的 GitHub 仓库。
+4. Framework Preset 保持默认的 **Other**。
+5. 确认 Node.js 版本由 `package.json` 控制：
 
 ```json
 {
@@ -63,45 +63,45 @@ git push -u origin main
 }
 ```
 
-### 3. Configure environment variables
+### 3. 配置环境变量
 
-For public deployments, set a source image allowlist before exposing the API:
+公开部署前，建议配置源图片域名白名单：
 
 ```text
 IMAGE_URL_ALLOWLIST=example.com,trusted-cdn.com
 ```
 
-Each configured domain allows the domain itself and all subdomains. If you leave `IMAGE_URL_ALLOWLIST` empty, the service behaves as an open image proxy.
+每个配置的域名会同时允许该域名本身和所有子域名。如果 `IMAGE_URL_ALLOWLIST` 为空或未设置，服务会以开放图片代理的方式运行。
 
-### 4. Deploy
+### 4. 执行部署
 
-Deploy from the Vercel dashboard, or use the Vercel CLI:
+可以在 Vercel 控制台中部署，也可以使用 Vercel CLI：
 
 ```shell
 vercel deploy
 ```
 
-For a production deployment through the CLI:
+使用 CLI 部署到生产环境：
 
 ```shell
 vercel deploy --prod
 ```
 
-### 5. Verify the deployment
+### 5. 验证部署
 
-Open the generated domain to view the homepage:
+打开生成的域名查看首页：
 
 ```text
 https://<your-project>.vercel.app/
 ```
 
-Then test the image API:
+然后测试图片处理 API：
 
 ```text
 https://<your-project>.vercel.app/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&width=800&height=600&fit=cover
 ```
 
-Expected response headers:
+预期响应头：
 
 ```text
 Content-Type: image/webp
@@ -111,82 +111,82 @@ X-Processor: vercel-node-image
 
 ## API
 
-Endpoint:
+接口：
 
 ```text
 GET /api/image
 ```
 
-Required query parameter:
+必需查询参数：
 
-| Parameter | Description |
+| 参数 | 说明 |
 | --- | --- |
-| `url` | Absolute `http` or `https` image URL. Encode it with `encodeURIComponent`. |
+| `url` | 绝对 `http` 或 `https` 图片地址。需要使用 `encodeURIComponent` 编码。 |
 
-## Source URL Allowlist
+## 源图片域名白名单
 
-Set `IMAGE_URL_ALLOWLIST` to restrict which remote image hosts can be fetched. Configure only base domains. For example, `example.com` allows both `example.com` and any subdomain such as `img.example.com` or `a.b.example.com`.
+通过 `IMAGE_URL_ALLOWLIST` 限制服务可以下载的远程图片域名。只需要配置基础域名。例如，配置 `example.com` 后，会同时允许 `example.com`、`img.example.com` 和 `a.b.example.com`。
 
-When the variable is empty or unset, the allowlist is disabled for backwards compatibility.
+如果该变量为空或未设置，白名单会关闭，以保持向后兼容。
 
-Supported entries:
+支持的配置：
 
-| Pattern | Meaning |
+| 配置 | 含义 |
 | --- | --- |
-| `example.com` | Allow `example.com` and all subdomains under it. |
-| `trusted-cdn.com` | Allow `trusted-cdn.com` and all subdomains under it. |
-| `*` | Explicitly allow every host. Useful only for local development. |
+| `example.com` | 允许 `example.com` 以及它下面的所有子域名。 |
+| `trusted-cdn.com` | 允许 `trusted-cdn.com` 以及它下面的所有子域名。 |
+| `*` | 显式允许所有域名。仅建议本地开发使用。 |
 
-Multiple entries can be separated by commas or whitespace:
+多个域名可以用逗号或空格分隔：
 
 ```text
 IMAGE_URL_ALLOWLIST=example.com trusted-cdn.com
 ```
 
-Rejected source hosts return `400` with a JSON error.
+被拒绝的源图片域名会返回 `400` JSON 错误。
 
-Optional query parameters:
+可选查询参数：
 
-| Parameter | Default | Description |
+| 参数 | 默认值 | 说明 |
 | --- | --- | --- |
-| `width` | unset | Target width in pixels. Clamped to `1024`. |
-| `height` | unset | Target height in pixels. Clamped to `1024`. |
-| `fit` | `scale-down` | One of `scale-down`, `contain`, `cover`, `pad`, `crop`. Invalid values fall back to `scale-down`. |
-| `quality` | `85` | WebP quality from `1` to `100`. Values outside the range are clamped. |
-| `format` | `webp` | Reserved for future formats. Current implementation only accepts `webp`. |
-| `background` | `FFFFFF` | Hex `RRGGBB` background for `contain` and `pad`. Invalid values fall back to white. |
-| `rotate` | unset | One of `90`, `180`, `270`. |
-| `flip` | unset | One of `h`, `v`, `hv`. |
+| `width` | 未设置 | 目标宽度，单位为像素。最大值会被限制为 `1024`。 |
+| `height` | 未设置 | 目标高度，单位为像素。最大值会被限制为 `1024`。 |
+| `fit` | `scale-down` | 支持 `scale-down`、`contain`、`cover`、`pad`、`crop`。非法值会回退为 `scale-down`。 |
+| `quality` | `85` | WebP 输出质量，范围为 `1` 到 `100`。超出范围的值会被截断。 |
+| `format` | `webp` | 为未来格式扩展预留。当前版本只接受 `webp`。 |
+| `background` | `FFFFFF` | `contain` 和 `pad` 模式使用的十六进制 `RRGGBB` 背景色。非法值会回退为白色。 |
+| `rotate` | 未设置 | 支持 `90`、`180`、`270`。 |
+| `flip` | 未设置 | 支持 `h`、`v`、`hv`。 |
 
-## Examples
+## 示例
 
-Cover crop:
+覆盖裁剪：
 
 ```text
 /api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&width=800&height=600&fit=cover
 ```
 
-Width-only proportional resize:
+仅按宽度等比缩放：
 
 ```text
 /api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&width=400
 ```
 
-Padded square with red background:
+红色背景的正方形填充图：
 
 ```text
 /api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&width=500&height=500&fit=pad&background=FF0000
 ```
 
-Rotate and flip:
+旋转并翻转：
 
 ```text
 /api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&rotate=90&flip=h
 ```
 
-## Response Headers
+## 响应头
 
-Successful processed image:
+成功处理后的图片响应：
 
 ```text
 Content-Type: image/webp
@@ -194,7 +194,7 @@ Cache-Control: public, max-age=86400, s-maxage=604800
 X-Processor: vercel-node-image
 ```
 
-Processing fallback:
+处理失败后的原图降级响应：
 
 ```text
 Content-Type: <original source content-type>
@@ -203,21 +203,21 @@ X-Processor: vercel-node-image
 X-Processing-Error: <short error message>
 ```
 
-## Error Responses
+## 错误响应
 
-| Status | Meaning |
+| 状态码 | 含义 |
 | --- | --- |
-| `400` | Missing or invalid request parameters. |
-| `405` | Method is not `GET`. |
-| `502` | Source image cannot be downloaded, times out, returns non-2xx, is too large, or is not an image response. |
-| `500` | Unexpected server error before source fetch succeeds. |
+| `400` | 请求参数缺失或非法。 |
+| `405` | 请求方法不是 `GET`。 |
+| `502` | 源图片无法下载、下载超时、返回非 2xx、文件过大，或响应不是图片。 |
+| `500` | 源图片下载成功前发生未预期的服务器错误。 |
 
-## Implementation Notes
+## 实现说明
 
-`@cf-wasm/photon` is used for image decode and transformations. The currently published Photon WebP method exposes no quality argument, so the production encoder first uses `webp-wasm` for quality-aware WebP output and falls back to Photon's `get_bytes_webp()` if that encoder is unavailable.
+`@cf-wasm/photon` 用于图片解码和几何变换。当前发布的 Photon WebP 方法不暴露质量参数，因此生产编码器会优先使用 `webp-wasm` 输出质量可控的 WebP；如果该编码器不可用，则回退到 Photon 的 `get_bytes_webp()`。
 
-See:
+更多文档：
 
-- [Architecture](docs/architecture.md)
-- [User Guide](docs/user-guide.md)
-- [Testing](docs/testing.md)
+- [架构说明](docs/architecture.md)
+- [用户指南](docs/user-guide.md)
+- [测试说明](docs/testing.md)
