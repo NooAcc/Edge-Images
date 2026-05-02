@@ -8,7 +8,7 @@ The service is a small Vercel Node.js API that behaves like a dynamic image CDN:
 - Apply bounded transforms.
 - Return WebP output.
 - Keep memory and CPU use predictable under Vercel Hobby limits.
-- Remain easy to migrate because all image work is WASM-based.
+- Use a single native image pipeline for decode, transform, and WebP encode.
 
 ## Module Map
 
@@ -42,10 +42,10 @@ lib/process-image.js
 `lib/fetch-image.js`
 
 - Uses `fetch` plus `AbortController`.
-- Defaults to an 8 second timeout.
+- Defaults to a 20 second timeout.
 - Rejects non-2xx responses.
 - Rejects non-image content types.
-- Rejects source payloads above 15 MB to keep memory bounded.
+- Rejects source payloads above 50 MB to keep memory bounded.
 
 `lib/url-allowlist.js`
 
@@ -68,12 +68,11 @@ lib/process-image.js
 
 `lib/process-image.js`
 
-- Lazily imports `@cf-wasm/photon/node`.
-- Decodes AVIF with `@jsquash/avif` when the source content type or `ftyp` brands indicate AVIF.
-- Decodes other source images with `PhotonImage.new_from_byteslice`.
+- Lazily imports `sharp`.
+- Reads source metadata to identify dimensions and format before planning transforms.
 - Applies orientation first, then fit geometry.
-- Frees Photon images in `finally` paths.
-- Encodes quality-aware WebP via `webp-wasm`, with Photon WebP fallback.
+- Maps requested post-rotation flips to sharp's pre-rotation flip/flop operations.
+- Encodes quality-aware WebP through the same sharp pipeline.
 
 `index.html` and `docs/index.html`
 
@@ -91,11 +90,10 @@ GET /api/image
        -> URL allowlist check
   -> fetchImage()
   -> processImage()
-       -> Photon decode
+       -> sharp metadata read
        -> rotate / flip
        -> fit transform
        -> WebP encode
-       -> Photon free()
   -> image/webp response
 ```
 
@@ -137,10 +135,9 @@ Unexpected early error -> 500 JSON
 - Optional source URL allowlist through `IMAGE_URL_ALLOWLIST`.
 - Optional structured debug logs through `IMAGE_DEBUG_LOGS`.
 - Output dimensions are capped at `1024 x 1024`.
-- Source response body is capped at 15 MB.
-- Source fetch timeout is 8 seconds.
-- Photon images are explicitly freed after use.
-- The Vercel function is configured with `maxDuration: 10`.
+- Source response body is capped at 50 MB.
+- Source fetch timeout is 20 seconds.
+- The Vercel function is configured with `maxDuration: 40`.
 
 ## Deployment
 
@@ -152,7 +149,7 @@ The project does not pin a Node.js version in `package.json`; Vercel uses the pr
 {
   "functions": {
     "api/image.js": {
-      "maxDuration": 10
+      "maxDuration": 40
     }
   }
 }

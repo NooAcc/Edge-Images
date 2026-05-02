@@ -4,14 +4,13 @@ import test from "node:test";
 import { createImageLogger } from "../lib/image-logger.js";
 import { processImage } from "../lib/process-image.js";
 import {
-  createFakePhoton,
+  createFakeSharp,
   decodeOutput,
-  fakeWebpEncoder,
   makeImageBytes
-} from "./helpers/fake-photon.js";
+} from "./helpers/fake-sharp.js";
 import { createCaptureSink } from "./helpers/capture-logs.js";
 
-test("processImage handles cover resize and passes quality to the encoder", async () => {
+test("processImage handles cover resize and passes quality to WebP output", async () => {
   const log = [];
   const output = await processImage(
     makeImageBytes(2048, 1536),
@@ -24,8 +23,7 @@ test("processImage handles cover resize and passes quality to the encoder", asyn
       flip: ""
     },
     {
-      photon: createFakePhoton(log),
-      encodeWebp: fakeWebpEncoder
+      sharp: createFakeSharp(log)
     }
   );
 
@@ -41,10 +39,17 @@ test("processImage handles cover resize and passes quality to the encoder", asyn
     log.filter((entry) => entry.op),
     [
       {
+        op: "extract",
+        from: [2048, 1536],
+        box: [0, 0, 2048, 1536]
+      },
+      {
         op: "resize",
         from: [2048, 1536],
         to: [800, 600],
-        filter: "lanczos3"
+        fit: "fill",
+        kernel: "lanczos3",
+        background: undefined
       }
     ]
   );
@@ -62,8 +67,7 @@ test("processImage scale-down does not upscale smaller inputs", async () => {
       flip: ""
     },
     {
-      photon: createFakePhoton(),
-      encodeWebp: fakeWebpEncoder
+      sharp: createFakeSharp()
     }
   );
 
@@ -81,8 +85,7 @@ test("processImage enforces max size when dimensions are omitted", async () => {
       flip: ""
     },
     {
-      photon: createFakePhoton(),
-      encodeWebp: fakeWebpEncoder
+      sharp: createFakeSharp()
     }
   );
 
@@ -102,8 +105,7 @@ test("processImage pad fills the surrounding canvas with the requested backgroun
       flip: ""
     },
     {
-      photon: createFakePhoton(),
-      encodeWebp: fakeWebpEncoder
+      sharp: createFakeSharp()
     }
   );
 
@@ -113,7 +115,7 @@ test("processImage pad fills the surrounding canvas with the requested backgroun
   assert.deepEqual(metadata.firstPixel, [255, 0, 0, 255]);
 });
 
-test("processImage applies rotation before flip and resize", async () => {
+test("processImage maps post-rotation horizontal flip to sharp vertical pre-flip", async () => {
   const log = [];
   const output = await processImage(
     makeImageBytes(300, 600),
@@ -122,12 +124,11 @@ test("processImage applies rotation before flip and resize", async () => {
       fit: "scale-down",
       quality: 85,
       rotate: 90,
-      flip: "hv",
+      flip: "h",
       background: [255, 255, 255]
     },
     {
-      photon: createFakePhoton(log),
-      encodeWebp: fakeWebpEncoder
+      sharp: createFakeSharp(log)
     }
   );
 
@@ -136,39 +137,31 @@ test("processImage applies rotation before flip and resize", async () => {
   assert.equal(metadata.height, 100);
   assert.deepEqual(
     log.map((entry) => entry.op),
-    ["rotate", "fliph", "flipv", "resize"]
+    ["flip", "rotate", "resize"]
   );
-  assert.deepEqual(log[1].size, [600, 300]);
+  assert.deepEqual(log[0].size, [300, 600]);
+  assert.deepEqual(log[1].from, [300, 600]);
 });
 
-test("processImage decodes AVIF when avif is a compatible brand", async () => {
+test("processImage logs source metadata discovered by sharp", async () => {
   const capture = createCaptureSink();
   const logger = createImageLogger({
     env: { IMAGE_DEBUG_LOGS: "1" },
     sink: capture.sink,
     requestId: "req_avif"
   });
-  let decodeCalls = 0;
 
   const output = await processImage(
-    makeAvifBytes({ majorBrand: "mif1", compatibleBrands: ["mif1", "avif"] }),
+    makeImageBytes(320, 180, { format: "avif" }),
     {
       fit: "scale-down",
       quality: 82,
       background: [255, 255, 255],
-      flip: ""
+      flip: "",
+      sourceContentType: "image/avif"
     },
     {
-      photon: createFakePhoton(),
-      encodeWebp: fakeWebpEncoder,
-      decodeAvif: async () => {
-        decodeCalls += 1;
-        return {
-          width: 320,
-          height: 180,
-          data: new Uint8ClampedArray(320 * 180 * 4)
-        };
-      },
+      sharp: createFakeSharp(),
       logger
     }
   );
@@ -177,92 +170,9 @@ test("processImage decodes AVIF when avif is a compatible brand", async () => {
   const records = capture.records();
   const decodeDone = records.find((record) => record.event === "image.decode.done");
 
-  assert.equal(decodeCalls, 1);
   assert.equal(metadata.width, 320);
   assert.equal(metadata.height, 180);
   assert.equal(metadata.quality, 82);
   assert.equal(decodeDone.inputFormat, "avif");
   assert.equal(decodeDone.width, 320);
 });
-
-test("processImage creates raw-pixel Photon images with the constructor API", async () => {
-  const photon = createFakePhoton();
-  class ConstructorOnlyPhotonImage extends photon.PhotonImage {}
-  ConstructorOnlyPhotonImage.new = undefined;
-
-  const output = await processImage(
-    makeAvifBytes({ majorBrand: "avif", compatibleBrands: ["avif"] }),
-    {
-      width: 16,
-      height: 16,
-      fit: "pad",
-      quality: 75,
-      background: [255, 255, 255],
-      flip: ""
-    },
-    {
-      photon: {
-        ...photon,
-        PhotonImage: ConstructorOnlyPhotonImage
-      },
-      encodeWebp: fakeWebpEncoder,
-      decodeAvif: async () => ({
-        width: 8,
-        height: 8,
-        data: new Uint8ClampedArray(8 * 8 * 4)
-      })
-    }
-  );
-
-  const metadata = decodeOutput(output);
-  assert.equal(metadata.width, 16);
-  assert.equal(metadata.height, 16);
-  assert.equal(metadata.quality, 75);
-});
-
-test("processImage loads the AVIF decoder wasm without global fetch", async () => {
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => {
-    throw new Error("unexpected wasm fetch");
-  };
-
-  try {
-    await assert.rejects(
-      () =>
-        processImage(
-          Buffer.from("not an avif file"),
-          {
-            sourceContentType: "image/avif",
-            fit: "scale-down",
-            quality: 82,
-            background: [255, 255, 255],
-            flip: ""
-          },
-          {
-            photon: createFakePhoton(),
-            encodeWebp: fakeWebpEncoder
-          }
-        ),
-      (error) => {
-        assert.notEqual(error.message, "unexpected wasm fetch");
-        return true;
-      }
-    );
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
-});
-
-function makeAvifBytes({ majorBrand, compatibleBrands }) {
-  const bytes = Buffer.alloc(16 + compatibleBrands.length * 4);
-  bytes.writeUInt32BE(bytes.length, 0);
-  bytes.write("ftyp", 4, "ascii");
-  bytes.write(majorBrand, 8, "ascii");
-  bytes.writeUInt32BE(0, 12);
-
-  compatibleBrands.forEach((brand, index) => {
-    bytes.write(brand, 16 + index * 4, "ascii");
-  });
-
-  return bytes;
-}

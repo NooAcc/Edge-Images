@@ -127,10 +127,10 @@ This keeps pages usable even when a source image has an unsupported or damaged f
 
 - Prefer explicit `width` and `height` for predictable layout.
 - Configure `IMAGE_URL_ALLOWLIST` before exposing the service publicly.
-- Set `IMAGE_DEBUG_LOGS=1` locally when diagnosing source fetches, AVIF decoding, or original-image fallbacks.
+- Set `IMAGE_DEBUG_LOGS=1` locally when diagnosing source fetches, image processing, or original-image fallbacks.
 - Use `cover` for thumbnails and cards.
 - Use `pad` for product images where the full object should remain visible.
-- Keep source images reasonably sized; the service rejects source payloads above 15 MB.
+- Keep source images reasonably sized; the service rejects source payloads above 50 MB.
 - Monitor Vercel function duration, bandwidth, and error rate after deployment.
 
 ## Debug Logs
@@ -145,7 +145,6 @@ Each line starts with `[image]` and contains a JSON record. Key events:
 
 - `image.source.fetch_bad_status`: the source server rejected the image request before processing.
 - `image.source.fetch_timeout`: the source response or body download exceeded the configured timeout.
-- `image.decode.avif_wasm_load_done`: the local AVIF decoder WASM file was loaded without relying on `fetch()`.
-- `image.decode.done`: the source image was decoded; `inputFormat` shows whether AVIF decoding was used.
+- `image.decode.done`: sharp read the source image metadata; `inputFormat` shows the detected source format.
 - `image.transform.plan`: the resize, crop, or padding plan selected for the request.
 - `image.request.processing_failed_fallback`: processing failed after a successful download, so the API returned the original bytes.

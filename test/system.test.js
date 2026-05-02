@@ -4,11 +4,10 @@ import test from "node:test";
 import { createImageHandler } from "../api/image.js";
 import { processImage } from "../lib/process-image.js";
 import {
-  createFakePhoton,
   decodeOutput,
-  fakeWebpEncoder,
+  createFakeSharp,
   makeImageBytes
-} from "./helpers/fake-photon.js";
+} from "./helpers/fake-sharp.js";
 
 test("system: GET /api/image cover scenario reaches the expected output size", async () => {
   const handler = createImageHandler({
@@ -18,8 +17,7 @@ test("system: GET /api/image cover scenario reaches the expected output size", a
     }),
     processImageImpl: async (buffer, params) =>
       processImage(buffer, params, {
-        photon: createFakePhoton(),
-        encodeWebp: fakeWebpEncoder
+        sharp: createFakeSharp()
       })
   });
   const res = createMockResponse();
@@ -53,8 +51,7 @@ test("system: corrupt downloaded image is returned as original fallback", async 
     }),
     processImageImpl: async (buffer, params) =>
       processImage(buffer, params, {
-        photon: createFakePhoton(),
-        encodeWebp: fakeWebpEncoder
+        sharp: createFakeSharp()
       })
   });
   const res = createMockResponse();

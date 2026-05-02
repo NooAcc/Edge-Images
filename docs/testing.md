@@ -38,9 +38,9 @@ Unit tests:
   - Source byte limit.
   - Timeout abort.
 - `test/process-image.test.js`
-  - Fit behavior through a fake Photon module.
+  - Fit behavior through a fake sharp pipeline.
   - Quality propagation.
-  - Rotation before flip and resize.
+  - Rotation-aware flip mapping.
   - Padding background.
 
 Integration and system tests:
@@ -51,8 +51,8 @@ Integration and system tests:
 - `test/system.test.js`
   - End-to-end handler flow with real parse logic and fake image processing backend.
   - Corrupt image fallback behavior.
-- `test/photon-smoke.test.js`
-  - Actual `@cf-wasm/photon` decode path.
+- `test/sharp-smoke.test.js`
+  - Actual sharp decode and transform path.
   - Actual WebP output generation.
   - Actual transparent alpha preservation after WebP output is decoded again.
 
@@ -65,7 +65,7 @@ Integration and system tests:
 | `fit=pad` with red background | `image-geometry.test.js`, `process-image.test.js` |
 | `scale-down` must not upscale | `image-geometry.test.js`, `process-image.test.js` |
 | `quality=50` reaches encoder | `process-image.test.js` |
-| Transparent channel preservation | `photon-smoke.test.js` decodes transparent WebP output and checks alpha |
+| Transparent channel preservation | `sharp-smoke.test.js` decodes transparent WebP output and checks alpha |
 | Oversized original without dimensions | `image-geometry.test.js`, `process-image.test.js` |
 | Download failure | `fetch-image.test.js`, `api-image.test.js` |
 | Processing failure fallback | `api-image.test.js`, `system.test.js` |

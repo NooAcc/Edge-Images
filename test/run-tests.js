@@ -6,5 +6,5 @@ import "./fetch-image.test.js";
 import "./process-image.test.js";
 import "./api-image.test.js";
 import "./system.test.js";
-import "./photon-smoke.test.js";
+import "./sharp-smoke.test.js";
 import "./static-pages.test.js";

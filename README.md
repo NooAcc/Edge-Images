@@ -7,7 +7,7 @@
 - `GET /api/image` 接收类似 Cloudflare Images 风格的查询参数。
 - 默认输出 WebP，质量为 `85`。
 - 输出尺寸始终限制在 `1024 x 1024` 以内。
-- 源图片下载超时时间为 8 秒。
+- 源图片下载超时时间为 20 秒。
 - 图片处理失败时会降级返回已下载的原图。
 - 响应包含适合 CDN 缓存的响应头。
 
@@ -25,7 +25,7 @@ npm run vercel:dev
 IMAGE_URL_ALLOWLIST=example.com,trusted-cdn.com
 ```
 
-本地调试源图下载、AVIF 解码和降级路径时，可以打开结构化日志：
+本地调试源图下载、图片处理和降级路径时，可以打开结构化日志：
 
 ```shell
 IMAGE_DEBUG_LOGS=1
@@ -228,7 +228,7 @@ X-Processing-Error: <short error message>
 
 ## 调试日志
 
-默认不输出详细调试日志。设置 `IMAGE_DEBUG_LOGS=1` 后，服务会向控制台输出以 `[image]` 开头的 JSON 日志，包含请求参数、源图下载状态、请求头、内容类型、字节数、AVIF 解码路径、图片变换计划、WebP 编码结果和原图降级原因。
+默认不输出详细调试日志。设置 `IMAGE_DEBUG_LOGS=1` 后，服务会向控制台输出以 `[image]` 开头的 JSON 日志，包含请求参数、源图下载状态、请求头、内容类型、字节数、图片处理路径、图片变换计划、WebP 编码结果和原图降级原因。
 
 本地运行示例：
 
@@ -236,13 +236,11 @@ X-Processing-Error: <short error message>
 IMAGE_DEBUG_LOGS=1 npm run vercel:dev
 ```
 
-如果日志里出现 `image.source.fetch_bad_status` 且 `status` 为 `403`，说明请求还没有进入 AVIF 解码阶段，是源站拒绝了函数侧下载请求。如果出现 `image.request.processing_failed_fallback`，说明源图已经下载成功，但解码、变换或编码阶段失败，接口会按设计返回原图。
-
-AVIF 解码器会通过本地文件读取 `avif_dec.wasm`，日志中的 `image.decode.avif_wasm_load_done` 表示 WASM 已经成功加载。如果源图响应头很快返回但 body 下载很慢，`image.source.fetch_timeout` 会在完整下载超时后出现。
+如果日志里出现 `image.source.fetch_bad_status` 且 `status` 为 `403`，说明请求还没有进入图片处理阶段，是源站拒绝了函数侧下载请求。如果出现 `image.request.processing_failed_fallback`，说明源图已经下载成功，但解码、变换或编码阶段失败，接口会按设计返回原图。如果源图响应头很快返回但 body 下载很慢，`image.source.fetch_timeout` 会在完整下载超时后出现。
 
 ## 实现说明
 
-`@cf-wasm/photon` 用于图片解码和几何变换。当前发布的 Photon WebP 方法不暴露质量参数，因此生产编码器会优先使用 `webp-wasm` 输出质量可控的 WebP；如果该编码器不可用，则回退到 Photon 的 `get_bytes_webp()`。
+`sharp` 用于图片解码、几何变换和质量可控的 WebP 编码。处理流程会读取源图元数据，按参数规划旋转、翻转、缩放、裁剪或填充，然后通过单一 sharp 管线输出 WebP。
 
 首页和文档页会初始化 Vercel Web Analytics 与 Speed Insights 的客户端队列，并加载对应采集脚本，用于采集页面访问和性能指标。实际数据展示需要在 Vercel 项目控制台中启用对应功能。
 

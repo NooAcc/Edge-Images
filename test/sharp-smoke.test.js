@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { deflateSync } from "node:zlib";
 import test from "node:test";
 
-import { loadPhoton, processImage } from "../lib/process-image.js";
+import { loadSharp, processImage } from "../lib/process-image.js";
 
-test("smoke: actual Photon pipeline decodes PNG and emits WebP bytes", async () => {
+test("smoke: actual sharp pipeline decodes PNG and emits WebP bytes", async () => {
   const png = makeRgbaPng(2, 2, [
     [255, 0, 0, 255],
     [0, 255, 0, 255],
@@ -36,18 +36,17 @@ test("smoke: actual WebP output preserves transparent alpha", async () => {
     background: [255, 255, 255],
     flip: ""
   });
-  const photon = await loadPhoton();
-  const decoded = photon.PhotonImage.new_from_byteslice(output);
+  const sharp = await loadSharp();
+  const decoded = await sharp(output)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
 
-  try {
-    const pixels = decoded.get_raw_pixels();
-    assert.equal(decoded.get_width(), 2);
-    assert.equal(decoded.get_height(), 1);
-    assert.equal(pixels[3], 0);
-    assert.equal(pixels[7], 255);
-  } finally {
-    decoded.free();
-  }
+  assert.equal(decoded.info.width, 2);
+  assert.equal(decoded.info.height, 1);
+  assert.equal(decoded.info.channels, 4);
+  assert.equal(decoded.data[3], 0);
+  assert.equal(decoded.data[7], 255);
 });
 
 function makeRgbaPng(width, height, pixels) {
