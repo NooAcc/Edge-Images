@@ -1,9 +1,7 @@
 {
   "functions": {
     "api/image.js": {
-      "includeFiles": [
-        "node_modules/@jsquash/avif/codec/dec/avif_dec.wasm"
-      ],
+      "includeFiles": "node_modules/@jsquash/avif/codec/dec/avif_dec.wasm",
       "maxDuration": 40
     }
   }
