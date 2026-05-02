@@ -25,6 +25,12 @@ npm run vercel:dev
 IMAGE_URL_ALLOWLIST=example.com,trusted-cdn.com
 ```
 
+本地调试源图下载、AVIF 解码和降级路径时，可以打开结构化日志：
+
+```shell
+IMAGE_DEBUG_LOGS=1
+```
+
 本地接口示例：
 
 ```text
@@ -217,6 +223,18 @@ X-Processing-Error: <short error message>
 | `405` | 请求方法不是 `GET`。 |
 | `502` | 源图片无法下载、下载超时、返回非 2xx、文件过大，或响应不是图片。 |
 | `500` | 源图片下载成功前发生未预期的服务器错误。 |
+
+## 调试日志
+
+默认不输出详细调试日志。设置 `IMAGE_DEBUG_LOGS=1` 后，服务会向控制台输出以 `[image]` 开头的 JSON 日志，包含请求参数、源图下载状态、请求头、内容类型、字节数、AVIF 解码路径、图片变换计划、WebP 编码结果和原图降级原因。
+
+本地运行示例：
+
+```shell
+IMAGE_DEBUG_LOGS=1 npm run vercel:dev
+```
+
+如果日志里出现 `image.source.fetch_bad_status` 且 `status` 为 `403`，说明请求还没有进入 AVIF 解码阶段，是源站拒绝了函数侧下载请求。如果出现 `image.request.processing_failed_fallback`，说明源图已经下载成功，但解码、变换或编码阶段失败，接口会按设计返回原图。
 
 ## 实现说明
 

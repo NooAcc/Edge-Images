@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { ImageFetchError, fetchImage } from "../lib/fetch-image.js";
+import { createImageLogger } from "../lib/image-logger.js";
+import { createCaptureSink } from "./helpers/capture-logs.js";
 
 test("fetchImage downloads an image buffer", async () => {
   const result = await fetchImage("https://example.com/photo.jpg", {
@@ -51,6 +53,41 @@ test("fetchImage rejects non-2xx responses", async () => {
       }),
     ImageFetchError
   );
+});
+
+test("fetchImage logs source response details before rejecting bad status", async () => {
+  const capture = createCaptureSink();
+  const logger = createImageLogger({
+    env: { IMAGE_DEBUG_LOGS: "1" },
+    sink: capture.sink,
+    requestId: "req_fetch_403"
+  });
+
+  await assert.rejects(
+    () =>
+      fetchImage("https://example.com/photo.avif", {
+        logger,
+        fetchImpl: async () =>
+          fakeResponse({
+            status: 403,
+            ok: false,
+            headers: {
+              "content-type": "image/avif",
+              "content-length": "0"
+            }
+          })
+      }),
+    /HTTP 403/
+  );
+
+  const records = capture.records();
+  const response = records.find((record) => record.event === "image.source.fetch_response");
+  const rejected = records.find((record) => record.event === "image.source.fetch_bad_status");
+
+  assert.equal(response.status, 403);
+  assert.equal(response.contentType, "image/avif");
+  assert.equal(response.sourceHost, "example.com");
+  assert.equal(rejected.status, 403);
 });
 
 test("fetchImage rejects non-image content", async () => {

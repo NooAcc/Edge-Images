@@ -125,7 +125,23 @@ This keeps pages usable even when a source image has an unsupported or damaged f
 
 - Prefer explicit `width` and `height` for predictable layout.
 - Configure `IMAGE_URL_ALLOWLIST` before exposing the service publicly.
+- Set `IMAGE_DEBUG_LOGS=1` locally when diagnosing source fetches, AVIF decoding, or original-image fallbacks.
 - Use `cover` for thumbnails and cards.
 - Use `pad` for product images where the full object should remain visible.
 - Keep source images reasonably sized; the service rejects source payloads above 15 MB.
 - Monitor Vercel function duration, bandwidth, and error rate after deployment.
+
+## Debug Logs
+
+Set `IMAGE_DEBUG_LOGS=1` before running the dev server to emit structured console logs:
+
+```shell
+IMAGE_DEBUG_LOGS=1 npm run vercel:dev
+```
+
+Each line starts with `[image]` and contains a JSON record. Key events:
+
+- `image.source.fetch_bad_status`: the source server rejected the image request before processing.
+- `image.decode.done`: the source image was decoded; `inputFormat` shows whether AVIF decoding was used.
+- `image.transform.plan`: the resize, crop, or padding plan selected for the request.
+- `image.request.processing_failed_fallback`: processing failed after a successful download, so the API returned the original bytes.

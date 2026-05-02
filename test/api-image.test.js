@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { CACHE_CONTROL, PROCESSOR_NAME, createImageHandler } from "../api/image.js";
+import { createCaptureSink } from "./helpers/capture-logs.js";
 
 test("api handler returns processed WebP output with cache headers", async () => {
   const handler = createImageHandler({
@@ -83,6 +84,48 @@ test("api handler returns 502 when source fetch fails", async () => {
   assert.equal(res.statusCode, 502);
   assert.match(res.body.toString(), /Bad Gateway/);
   assert.equal(res.headers["x-processor"], PROCESSOR_NAME);
+});
+
+test("api handler logs source fetch failures when debug logging is enabled", async () => {
+  const capture = createCaptureSink();
+  const handler = createImageHandler({
+    fetchImageImpl: async () => {
+      const error = new Error("Source image returned HTTP 403");
+      error.status = 403;
+      throw error;
+    },
+    logger: capture.sink
+  });
+  const res = createMockResponse();
+
+  await handler(
+    {
+      method: "GET",
+      url: "/api/image",
+      headers: { "x-request-id": "req_debug" },
+      env: { IMAGE_DEBUG_LOGS: "1" },
+      query: {
+        url: "https://example.com/photo.avif",
+        width: "420",
+        height: "296",
+        fit: "cover",
+        quality: "82"
+      }
+    },
+    res
+  );
+
+  const records = capture.records();
+  const params = records.find((record) => record.event === "image.request.params");
+  const failed = records.find((record) => record.event === "image.request.fetch_failed");
+
+  assert.equal(res.statusCode, 502);
+  assert.equal(params.requestId, "req_debug");
+  assert.equal(params.sourceHost, "example.com");
+  assert.equal(params.width, 420);
+  assert.equal(params.fit, "cover");
+  assert.equal(failed.status, 403);
+  assert.equal(failed.errorMessage, "Source image returned HTTP 403");
 });
 
 test("api handler falls back to the original image when processing fails", async () => {

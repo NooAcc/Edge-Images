@@ -17,6 +17,7 @@ api/image.js
 lib/parse-params.js
 lib/fetch-image.js
 lib/image-geometry.js
+lib/image-logger.js
 lib/process-image.js
 ```
 
@@ -59,10 +60,17 @@ lib/process-image.js
 - Keeps output dimensions under `1024 x 1024`.
 - Uses source-side cropping for `cover` to avoid huge intermediate resized images.
 
+`lib/image-logger.js`
+
+- Creates opt-in structured debug logs when `IMAGE_DEBUG_LOGS=1`.
+- Emits JSON records for request parsing, source fetches, processing, and fallback paths.
+- Stays silent by default to avoid noisy production logs.
+
 `lib/process-image.js`
 
 - Lazily imports `@cf-wasm/photon/node`.
-- Decodes the source image with `PhotonImage.new_from_byteslice`.
+- Decodes AVIF with `@jsquash/avif` when the source content type or `ftyp` brands indicate AVIF.
+- Decodes other source images with `PhotonImage.new_from_byteslice`.
 - Applies orientation first, then fit geometry.
 - Frees Photon images in `finally` paths.
 - Encodes quality-aware WebP via `webp-wasm`, with Photon WebP fallback.
@@ -127,6 +135,7 @@ Unexpected early error -> 500 JSON
 ## Resource Controls
 
 - Optional source URL allowlist through `IMAGE_URL_ALLOWLIST`.
+- Optional structured debug logs through `IMAGE_DEBUG_LOGS`.
 - Output dimensions are capped at `1024 x 1024`.
 - Source response body is capped at 15 MB.
 - Source fetch timeout is 8 seconds.

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { createImageLogger } from "../lib/image-logger.js";
 import { processImage } from "../lib/process-image.js";
 import {
   createFakePhoton,
@@ -8,6 +9,7 @@ import {
   fakeWebpEncoder,
   makeImageBytes
 } from "./helpers/fake-photon.js";
+import { createCaptureSink } from "./helpers/capture-logs.js";
 
 test("processImage handles cover resize and passes quality to the encoder", async () => {
   const log = [];
@@ -138,3 +140,61 @@ test("processImage applies rotation before flip and resize", async () => {
   );
   assert.deepEqual(log[1].size, [600, 300]);
 });
+
+test("processImage decodes AVIF when avif is a compatible brand", async () => {
+  const capture = createCaptureSink();
+  const logger = createImageLogger({
+    env: { IMAGE_DEBUG_LOGS: "1" },
+    sink: capture.sink,
+    requestId: "req_avif"
+  });
+  let decodeCalls = 0;
+
+  const output = await processImage(
+    makeAvifBytes({ majorBrand: "mif1", compatibleBrands: ["mif1", "avif"] }),
+    {
+      fit: "scale-down",
+      quality: 82,
+      background: [255, 255, 255],
+      flip: ""
+    },
+    {
+      photon: createFakePhoton(),
+      encodeWebp: fakeWebpEncoder,
+      decodeAvif: async () => {
+        decodeCalls += 1;
+        return {
+          width: 320,
+          height: 180,
+          data: new Uint8ClampedArray(320 * 180 * 4)
+        };
+      },
+      logger
+    }
+  );
+
+  const metadata = decodeOutput(output);
+  const records = capture.records();
+  const decodeDone = records.find((record) => record.event === "image.decode.done");
+
+  assert.equal(decodeCalls, 1);
+  assert.equal(metadata.width, 320);
+  assert.equal(metadata.height, 180);
+  assert.equal(metadata.quality, 82);
+  assert.equal(decodeDone.inputFormat, "avif");
+  assert.equal(decodeDone.width, 320);
+});
+
+function makeAvifBytes({ majorBrand, compatibleBrands }) {
+  const bytes = Buffer.alloc(16 + compatibleBrands.length * 4);
+  bytes.writeUInt32BE(bytes.length, 0);
+  bytes.write("ftyp", 4, "ascii");
+  bytes.write(majorBrand, 8, "ascii");
+  bytes.writeUInt32BE(0, 12);
+
+  compatibleBrands.forEach((brand, index) => {
+    bytes.write(brand, 16 + index * 4, "ascii");
+  });
+
+  return bytes;
+}
