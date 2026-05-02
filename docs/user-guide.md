@@ -142,6 +142,8 @@ IMAGE_DEBUG_LOGS=1 npm run vercel:dev
 Each line starts with `[image]` and contains a JSON record. Key events:
 
 - `image.source.fetch_bad_status`: the source server rejected the image request before processing.
+- `image.source.fetch_timeout`: the source response or body download exceeded the configured timeout.
+- `image.decode.avif_wasm_load_done`: the local AVIF decoder WASM file was loaded without relying on `fetch()`.
 - `image.decode.done`: the source image was decoded; `inputFormat` shows whether AVIF decoding was used.
 - `image.transform.plan`: the resize, crop, or padding plan selected for the request.
 - `image.request.processing_failed_fallback`: processing failed after a successful download, so the API returned the original bytes.

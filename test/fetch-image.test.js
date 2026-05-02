@@ -140,6 +140,34 @@ test("fetchImage aborts slow downloads", async () => {
   );
 });
 
+test("fetchImage aborts slow response bodies", async () => {
+  await assert.rejects(
+    () =>
+      fetchImage("https://example.com/slow-body.jpg", {
+        timeoutMs: 1,
+        fetchImpl: async (_url, { signal }) => ({
+          status: 200,
+          ok: true,
+          headers: {
+            get(name) {
+              return name.toLowerCase() === "content-type" ? "image/jpeg" : undefined;
+            }
+          },
+          async arrayBuffer() {
+            return new Promise((_resolve, reject) => {
+              signal.addEventListener("abort", () => {
+                const error = new Error("aborted");
+                error.name = "AbortError";
+                reject(error);
+              });
+            });
+          }
+        })
+      }),
+    /timed out/
+  );
+});
+
 function fakeResponse({ status = 200, ok = true, body = Buffer.alloc(0), headers = {} } = {}) {
   return {
     status,

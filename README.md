@@ -236,6 +236,8 @@ IMAGE_DEBUG_LOGS=1 npm run vercel:dev
 
 如果日志里出现 `image.source.fetch_bad_status` 且 `status` 为 `403`，说明请求还没有进入 AVIF 解码阶段，是源站拒绝了函数侧下载请求。如果出现 `image.request.processing_failed_fallback`，说明源图已经下载成功，但解码、变换或编码阶段失败，接口会按设计返回原图。
 
+AVIF 解码器会通过本地文件读取 `avif_dec.wasm`，日志中的 `image.decode.avif_wasm_load_done` 表示 WASM 已经成功加载。如果源图响应头很快返回但 body 下载很慢，`image.source.fetch_timeout` 会在完整下载超时后出现。
+
 ## 实现说明
 
 `@cf-wasm/photon` 用于图片解码和几何变换。当前发布的 Photon WebP 方法不暴露质量参数，因此生产编码器会优先使用 `webp-wasm` 输出质量可控的 WebP；如果该编码器不可用，则回退到 Photon 的 `get_bytes_webp()`。

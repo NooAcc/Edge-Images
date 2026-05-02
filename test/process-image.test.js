@@ -185,6 +185,39 @@ test("processImage decodes AVIF when avif is a compatible brand", async () => {
   assert.equal(decodeDone.width, 320);
 });
 
+test("processImage loads the AVIF decoder wasm without global fetch", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    throw new Error("unexpected wasm fetch");
+  };
+
+  try {
+    await assert.rejects(
+      () =>
+        processImage(
+          Buffer.from("not an avif file"),
+          {
+            sourceContentType: "image/avif",
+            fit: "scale-down",
+            quality: 82,
+            background: [255, 255, 255],
+            flip: ""
+          },
+          {
+            photon: createFakePhoton(),
+            encodeWebp: fakeWebpEncoder
+          }
+        ),
+      (error) => {
+        assert.notEqual(error.message, "unexpected wasm fetch");
+        return true;
+      }
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 function makeAvifBytes({ majorBrand, compatibleBrands }) {
   const bytes = Buffer.alloc(16 + compatibleBrands.length * 4);
   bytes.writeUInt32BE(bytes.length, 0);
