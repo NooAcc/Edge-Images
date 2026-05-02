@@ -1,4 +1,3 @@
-import { createHash } from "crypto";
 import { fetchImage } from "../lib/fetch-image.js";
 import { createImageLogger } from "../lib/image-logger.js";
 import { ParamError, parseParams } from "../lib/parse-params.js";
@@ -99,35 +98,16 @@ export function createImageHandler({
         }
       );
 
-      const etag = generateETag(webpBuffer);
-      
-      if (checkETagMatch(req, etag)) {
-        requestLogger.info("image.request.not_modified", {
-          statusCode: 304,
-          etag
-        });
-        
-        res.statusCode = 304;
-        res.setHeader("Cache-Control", CACHE_CONTROL);
-        res.setHeader("ETag", etag);
-        res.setHeader("Vary", "Accept");
-        res.end();
-        return;
-      }
-
       requestLogger.info("image.request.success", {
         statusCode: 200,
         sourceBytes: source.buffer.length,
         outputBytes: webpBuffer.length,
-        outputContentType: "image/webp",
-        etag
+        outputContentType: "image/webp"
       });
 
       return sendBuffer(res, 200, webpBuffer, {
         "Content-Type": "image/webp",
         "Cache-Control": CACHE_CONTROL,
-        "ETag": etag,
-        "Vary": "Accept",
         "X-Processor": PROCESSOR_NAME
       });
     } catch (error) {
@@ -137,28 +117,10 @@ export function createImageHandler({
         sourceContentType: source.contentType || "",
         fallbackContentType: source.contentType || "application/octet-stream"
       });
-      
-      const etag = generateETag(source.buffer);
-      
-      if (checkETagMatch(req, etag)) {
-        requestLogger.info("image.request.not_modified_fallback", {
-          statusCode: 304,
-          etag
-        });
-        
-        res.statusCode = 304;
-        res.setHeader("Cache-Control", CACHE_CONTROL);
-        res.setHeader("ETag", etag);
-        res.setHeader("Vary", "Accept");
-        res.end();
-        return;
-      }
 
       return sendBuffer(res, 200, source.buffer, {
         "Content-Type": source.contentType || "application/octet-stream",
         "Cache-Control": CACHE_CONTROL,
-        "ETag": etag,
-        "Vary": "Accept",
         "X-Processor": PROCESSOR_NAME,
         "X-Processing-Error": sanitizeHeaderValue(error?.message || "Image processing failed")
       });
@@ -190,22 +152,6 @@ function sendBuffer(res, statusCode, body, headers = {}) {
   }
 
   res.end(Buffer.isBuffer(body) ? body : Buffer.from(body));
-}
-
-function generateETag(buffer) {
-  const hash = createHash("md5");
-  hash.update(buffer);
-  return `"${hash.digest("hex")}"`;
-}
-
-function checkETagMatch(req, etag) {
-  const ifNoneMatch = getHeader(req, "if-none-match");
-  if (!ifNoneMatch) {
-    return false;
-  }
-
-  const clientETags = ifNoneMatch.split(",").map((tag) => tag.trim());
-  return clientETags.includes(etag) || clientETags.includes("*");
 }
 
 export function sanitizeHeaderValue(value) {
