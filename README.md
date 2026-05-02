@@ -139,7 +139,9 @@ GET /api/image
 
 通过 `IMAGE_URL_ALLOWLIST` 限制服务可以下载的远程图片域名。只需要配置基础域名。例如，配置 `example.com` 后，会同时允许 `example.com`、`img.example.com` 和 `a.b.example.com`。
 
-如果该变量为空或未设置，白名单会关闭，以保持向后兼容。
+如果该变量为空或未设置，白名单会关闭，服务会允许任意源图域名。
+
+白名单条目只接受基础域名或显式 `*`。不要填写 URL、路径、端口或 `*.example.com` 形式。
 
 支持的配置：
 

@@ -25,24 +25,6 @@ test("isUrlAllowed accepts configured domain and all subdomains", () => {
   assert.equal(isUrlAllowed("https://example.net/photo.jpg", allowlist), false);
 });
 
-test("isUrlAllowed normalizes legacy wildcard subdomain entries to domain rules", () => {
-  const allowlist = createUrlAllowlist("*.example.com");
-
-  assert.equal(isUrlAllowed("https://example.com/photo.jpg", allowlist), true);
-  assert.equal(isUrlAllowed("https://images.example.com/photo.jpg", allowlist), true);
-  assert.equal(isUrlAllowed("https://deep.images.example.com/photo.jpg", allowlist), true);
-  assert.equal(isUrlAllowed("https://notexample.com/photo.jpg", allowlist), false);
-});
-
-test("isUrlAllowed normalizes URL-style entries to host domain rules", () => {
-  const allowlist = createUrlAllowlist("https://images.example.com:443/path");
-
-  assert.equal(isUrlAllowed("https://images.example.com/photo.jpg", allowlist), true);
-  assert.equal(isUrlAllowed("http://images.example.com/photo.jpg", allowlist), true);
-  assert.equal(isUrlAllowed("https://thumbs.images.example.com/photo.jpg", allowlist), true);
-  assert.equal(isUrlAllowed("https://example.com/photo.jpg", allowlist), false);
-});
-
 test("isUrlAllowed allows all when wildcard star is explicitly configured", () => {
   const allowlist = createUrlAllowlist("*");
 
@@ -50,17 +32,18 @@ test("isUrlAllowed allows all when wildcard star is explicitly configured", () =
   assert.equal(isUrlAllowed("http://localhost:3000/photo.jpg", allowlist), true);
 });
 
-test("getUrlAllowlistFromEnv reads IMAGE_URL_ALLOWLIST before legacy env name", () => {
+test("getUrlAllowlistFromEnv reads IMAGE_URL_ALLOWLIST only", () => {
   const allowlist = getUrlAllowlistFromEnv({
-    IMAGE_URL_ALLOWLIST: "example.com",
-    ALLOWED_IMAGE_HOSTS: "legacy.example.com"
+    IMAGE_URL_ALLOWLIST: "example.com"
   });
 
   assert.equal(isUrlAllowed("https://images.example.com/photo.jpg", allowlist), true);
-  assert.equal(isUrlAllowed("https://legacy.example.com/photo.jpg", allowlist), true);
-  assert.equal(isUrlAllowed("https://legacy.example.net/photo.jpg", allowlist), false);
+  assert.equal(isUrlAllowed("https://example.net/photo.jpg", allowlist), false);
 });
 
-test("createUrlAllowlist rejects malformed wildcard rules", () => {
+test("createUrlAllowlist rejects non-domain rules", () => {
   assert.throws(() => createUrlAllowlist("*example.com"), UrlAllowlistConfigError);
+  assert.throws(() => createUrlAllowlist("*.example.com"), UrlAllowlistConfigError);
+  assert.throws(() => createUrlAllowlist("https://images.example.com/path"), UrlAllowlistConfigError);
+  assert.throws(() => createUrlAllowlist("images.example.com:443"), UrlAllowlistConfigError);
 });

@@ -49,10 +49,10 @@ lib/process-image.js
 
 `lib/url-allowlist.js`
 
-- Parses `IMAGE_URL_ALLOWLIST` or legacy `ALLOWED_IMAGE_HOSTS`.
+- Parses `IMAGE_URL_ALLOWLIST`.
 - Treats each configured domain as allowing that domain and all of its subdomains.
-- Accepts legacy wildcard or URL-shaped entries by normalizing them back to the hostname.
-- Keeps allowlist enforcement disabled when no rules are configured, preserving the original open proxy behavior unless the deployment opts in.
+- Rejects URL-shaped, port-bearing, or wildcard subdomain entries; only base domains and explicit `*` are accepted.
+- Keeps allowlist enforcement disabled when no rules are configured.
 
 `lib/image-geometry.js`
 

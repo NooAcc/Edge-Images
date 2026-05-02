@@ -24,8 +24,8 @@ Unit tests:
 - `test/url-allowlist.test.js`
   - Disabled allowlist behavior.
   - Domain plus subdomain matching.
-  - Legacy wildcard and URL-shaped entry normalization.
-  - Legacy env var support.
+  - Explicit `*` allow-all behavior.
+  - Non-domain rule rejection.
   - Malformed rule rejection.
 - `test/image-geometry.test.js`
   - Aspect inference.

@@ -33,7 +33,9 @@ Each entry is a domain. A configured domain allows both itself and all subdomain
 - `trusted-cdn.com` allows `trusted-cdn.com` and `assets.trusted-cdn.com`.
 - `*` allows all hosts and should be limited to local development.
 
-If `IMAGE_URL_ALLOWLIST` is empty or unset, the allowlist is disabled to preserve compatibility with the original open image proxy behavior.
+Entries must be plain base domains or `*`. URLs, paths, ports, and `*.example.com` wildcard entries are rejected.
+
+If `IMAGE_URL_ALLOWLIST` is empty or unset, the allowlist is disabled and the service allows any source image host.
 
 ## Common Recipes
 
