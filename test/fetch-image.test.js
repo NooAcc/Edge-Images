@@ -20,6 +20,29 @@ test("fetchImage downloads an image buffer", async () => {
   assert.equal(result.status, 200);
 });
 
+test("fetchImage sends browser-like image request headers", async () => {
+  let requestOptions;
+
+  const result = await fetchImage("https://example.com/photo.avif", {
+    fetchImpl: async (_url, options) => {
+      requestOptions = options;
+      return fakeResponse({
+        body: Buffer.from("avif"),
+        headers: {
+          "content-type": "image/avif",
+          "content-length": "4"
+        }
+      });
+    }
+  });
+
+  assert.equal(result.contentType, "image/avif");
+  assert.match(requestOptions.headers.Accept, /^image\/avif,image\/webp/);
+  assert.match(requestOptions.headers["User-Agent"], /Mozilla\/5\.0 .* Chrome\/124\.0/);
+  assert.equal(requestOptions.headers["Accept-Language"], "zh-CN,zh;q=0.9,en;q=0.8");
+  assert.equal(requestOptions.headers.Referer, "https://example.com/");
+});
+
 test("fetchImage rejects non-2xx responses", async () => {
   await assert.rejects(
     () =>
