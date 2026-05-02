@@ -1,5 +1,15 @@
 export class FakePhotonImage {
-  constructor(width, height, pixels) {
+  constructor(widthOrPixels, heightOrWidth, pixelsOrHeight) {
+    let width = widthOrPixels;
+    let height = heightOrWidth;
+    let pixels = pixelsOrHeight;
+
+    if (widthOrPixels instanceof Uint8Array || widthOrPixels instanceof Uint8ClampedArray) {
+      pixels = widthOrPixels;
+      width = heightOrWidth;
+      height = pixelsOrHeight;
+    }
+
     this.width = width;
     this.height = height;
     this.pixels = pixels;
@@ -14,7 +24,7 @@ export class FakePhotonImage {
   }
 
   static new(pixels, width, height) {
-    return new FakePhotonImage(width, height, Uint8Array.from(pixels));
+    return new FakePhotonImage(Uint8Array.from(pixels), width, height);
   }
 
   get_width() {

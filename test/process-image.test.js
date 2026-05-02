@@ -185,6 +185,41 @@ test("processImage decodes AVIF when avif is a compatible brand", async () => {
   assert.equal(decodeDone.width, 320);
 });
 
+test("processImage creates raw-pixel Photon images with the constructor API", async () => {
+  const photon = createFakePhoton();
+  class ConstructorOnlyPhotonImage extends photon.PhotonImage {}
+  ConstructorOnlyPhotonImage.new = undefined;
+
+  const output = await processImage(
+    makeAvifBytes({ majorBrand: "avif", compatibleBrands: ["avif"] }),
+    {
+      width: 16,
+      height: 16,
+      fit: "pad",
+      quality: 75,
+      background: [255, 255, 255],
+      flip: ""
+    },
+    {
+      photon: {
+        ...photon,
+        PhotonImage: ConstructorOnlyPhotonImage
+      },
+      encodeWebp: fakeWebpEncoder,
+      decodeAvif: async () => ({
+        width: 8,
+        height: 8,
+        data: new Uint8ClampedArray(8 * 8 * 4)
+      })
+    }
+  );
+
+  const metadata = decodeOutput(output);
+  assert.equal(metadata.width, 16);
+  assert.equal(metadata.height, 16);
+  assert.equal(metadata.quality, 75);
+});
+
 test("processImage loads the AVIF decoder wasm without global fetch", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => {
