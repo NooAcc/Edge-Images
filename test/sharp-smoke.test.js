@@ -13,7 +13,7 @@ test("smoke: actual sharp pipeline decodes PNG and emits WebP bytes", async () =
   ]);
 
   const output = await processImage(png, {
-    fit: "scale-down",
+    fit: "inside",
     quality: 85,
     background: [255, 255, 255],
     flip: ""
@@ -31,7 +31,7 @@ test("smoke: actual WebP output preserves transparent alpha", async () => {
   ]);
 
   const output = await processImage(png, {
-    fit: "scale-down",
+    fit: "inside",
     quality: 85,
     background: [255, 255, 255],
     flip: ""

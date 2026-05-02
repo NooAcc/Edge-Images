@@ -16,7 +16,6 @@ The service is a small Vercel Node.js API that behaves like a dynamic image CDN:
 api/image.js
 lib/parse-params.js
 lib/fetch-image.js
-lib/image-geometry.js
 lib/image-logger.js
 lib/process-image.js
 ```
@@ -36,7 +35,7 @@ lib/process-image.js
 - Enforces `IMAGE_URL_ALLOWLIST` when configured.
 - Clamps `width` and `height` to `1024`.
 - Clamps `quality` to `1..100`.
-- Defaults invalid `fit` to `scale-down`.
+- Accepts only sharp native `fit` values: `cover`, `contain`, `fill`, `inside`, and `outside`.
 - Defaults invalid `background` to white.
 
 `lib/fetch-image.js`
@@ -54,12 +53,6 @@ lib/process-image.js
 - Rejects URL-shaped, port-bearing, or wildcard subdomain entries; only base domains and explicit `*` are accepted.
 - Keeps allowlist enforcement disabled when no rules are configured.
 
-`lib/image-geometry.js`
-
-- Contains pure transform planning logic.
-- Keeps output dimensions under `1024 x 1024`.
-- Uses source-side cropping for `cover` to avoid huge intermediate resized images.
-
 `lib/image-logger.js`
 
 - Creates opt-in structured debug logs when `IMAGE_DEBUG_LOGS=1`.
@@ -69,10 +62,9 @@ lib/process-image.js
 `lib/process-image.js`
 
 - Lazily imports `sharp`.
-- Reads source metadata to identify dimensions and format before planning transforms.
-- Applies orientation first, then fit geometry.
-- Maps requested post-rotation flips to sharp's pre-rotation flip/flop operations.
-- Encodes quality-aware WebP through the same sharp pipeline.
+- Builds a single native sharp pipeline without a separate metadata pass.
+- Applies rotate, flip/flop, native resize, and WebP output in one chain.
+- Uses `effort: 0` for fastest WebP encoding.
 
 `index.html` and `docs/index.html`
 
@@ -90,10 +82,9 @@ GET /api/image
        -> URL allowlist check
   -> fetchImage()
   -> processImage()
-       -> sharp metadata read
        -> rotate / flip
-       -> fit transform
-       -> WebP encode
+       -> sharp native resize
+       -> fastest WebP encode
   -> image/webp response
 ```
 
@@ -108,27 +99,27 @@ Unexpected early error -> 500 JSON
 
 ## Fit Modes
 
-`scale-down`
+`inside`
 
-- Uses the requested box if provided.
-- Uses the `1024 x 1024` max box if no dimensions are provided.
-- Never enlarges the source image.
-
-`contain` and `pad`
-
-- Resize proportionally to fit inside the requested box.
-- Create the exact target canvas.
-- Fill surrounding space with the configured background.
+- Default mode.
+- Fits inside the requested box and never enlarges the source image.
+- Uses the `1024 x 1024` max box when dimensions are omitted.
 
 `cover`
 
-- Center-crop the source to the target aspect ratio first.
-- Resize the cropped source to the exact requested box.
-- This avoids creating very large intermediate images for extreme aspect ratios.
+- Uses sharp's native cover behavior to fill the requested box and crop overflow.
 
-`crop`
+`contain`
 
-- Resize directly to the target box without preserving source aspect ratio.
+- Uses sharp's native contain behavior to show the whole image and fill empty area.
+
+`fill`
+
+- Uses sharp's native fill behavior to force the exact requested dimensions.
+
+`outside`
+
+- Uses sharp's native outside behavior to resize until at least one requested dimension is met.
 
 ## Resource Controls
 

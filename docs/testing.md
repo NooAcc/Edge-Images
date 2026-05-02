@@ -27,10 +27,6 @@ Unit tests:
   - Explicit `*` allow-all behavior.
   - Non-domain rule rejection.
   - Malformed rule rejection.
-- `test/image-geometry.test.js`
-  - Aspect inference.
-  - `1024 x 1024` cap.
-  - `scale-down`, `pad`, and `cover` planning.
 - `test/fetch-image.test.js`
   - Successful image download.
   - Non-2xx failure.
@@ -40,8 +36,8 @@ Unit tests:
 - `test/process-image.test.js`
   - Fit behavior through a fake sharp pipeline.
   - Quality propagation.
-  - Rotation-aware flip mapping.
-  - Padding background.
+  - Native sharp orientation operations.
+  - Fastest WebP effort.
 
 Integration and system tests:
 
@@ -61,12 +57,12 @@ Integration and system tests:
 | Requirement scenario | Covered by |
 | --- | --- |
 | JPEG 2048 x 1536 to 800 x 600 `cover` | `process-image.test.js`, `system.test.js` with equivalent dimensions |
-| Width-only proportional resize | `image-geometry.test.js` |
-| `fit=pad` with red background | `image-geometry.test.js`, `process-image.test.js` |
-| `scale-down` must not upscale | `image-geometry.test.js`, `process-image.test.js` |
+| Width-only proportional resize | `process-image.test.js` |
+| `fit=contain` with red background | `process-image.test.js` |
+| `inside` must not upscale | `process-image.test.js` |
 | `quality=50` reaches encoder | `process-image.test.js` |
 | Transparent channel preservation | `sharp-smoke.test.js` decodes transparent WebP output and checks alpha |
-| Oversized original without dimensions | `image-geometry.test.js`, `process-image.test.js` |
+| Oversized original without dimensions | `process-image.test.js` |
 | Download failure | `fetch-image.test.js`, `api-image.test.js` |
 | Processing failure fallback | `api-image.test.js`, `system.test.js` |
 | URL allowlist rejection | `url-allowlist.test.js`, `parse-params.test.js`, `api-image.test.js` |

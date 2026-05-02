@@ -12,7 +12,7 @@ test("parseParams normalizes defaults", () => {
   const params = parseParams({ url: "https://example.com/photo.jpg" });
 
   assert.equal(params.url, "https://example.com/photo.jpg");
-  assert.equal(params.fit, "scale-down");
+  assert.equal(params.fit, "inside");
   assert.equal(params.quality, 85);
   assert.equal(params.format, "webp");
   assert.deepEqual(params.background, DEFAULT_BACKGROUND);
@@ -33,14 +33,22 @@ test("parseParams clamps dimensions and quality", () => {
   assert.equal(params.quality, 100);
 });
 
-test("parseParams defaults invalid fit and background", () => {
+test("parseParams rejects invalid fit and defaults invalid background", () => {
+  assert.throws(
+    () =>
+      parseParams({
+        url: "https://example.com/photo.jpg",
+        fit: "invalid"
+      }),
+    /fit must be/
+  );
+
   const params = parseParams({
     url: "https://example.com/photo.jpg",
-    fit: "invalid",
     background: "not-a-color"
   });
 
-  assert.equal(params.fit, "scale-down");
+  assert.equal(params.fit, "inside");
   assert.deepEqual(params.background, [255, 255, 255]);
   assert.equal(params.backgroundHex, "FFFFFF");
 });
@@ -63,6 +71,10 @@ test("parseParams rejects unsupported format and invalid transform values", () =
   assert.throws(
     () => parseParams({ url: "https://example.com/photo.jpg", format: "png" }),
     /format must be webp/
+  );
+  assert.throws(
+    () => parseParams({ url: "https://example.com/photo.jpg", fit: "scale-down" }),
+    /fit must be/
   );
   assert.throws(
     () => parseParams({ url: "https://example.com/photo.jpg", rotate: "45" }),

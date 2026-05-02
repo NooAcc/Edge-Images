@@ -78,16 +78,18 @@ class FakeSharpPipeline {
   }
 
   resize(options) {
+    const from = [this.width, this.height];
+    const next = resolveResize(this.width, this.height, options);
     this.log.push({
       op: "resize",
-      from: [this.width, this.height],
-      to: [options.width, options.height],
+      from,
+      to: [next.width, next.height],
+      options: { ...options },
       fit: options.fit,
-      kernel: options.kernel,
       background: options.background
     });
-    this.width = options.width;
-    this.height = options.height;
+    this.width = next.width;
+    this.height = next.height;
 
     if (options.fit === "contain" && options.background) {
       this.firstPixel = [
@@ -103,6 +105,7 @@ class FakeSharpPipeline {
 
   webp(options) {
     this.quality = options.quality;
+    this.webpOptions = { ...options };
     return this;
   }
 
@@ -112,6 +115,7 @@ class FakeSharpPipeline {
         width: this.width,
         height: this.height,
         quality: this.quality,
+        webpOptions: this.webpOptions,
         firstPixel: this.firstPixel,
         flippedH: this.flippedH,
         flippedV: this.flippedV
@@ -132,4 +136,43 @@ class FakeSharpPipeline {
 
     return data;
   }
+}
+
+function resolveResize(sourceWidth, sourceHeight, options) {
+  const targetWidth = options.width;
+  const targetHeight = options.height;
+
+  if (targetWidth && targetHeight) {
+    if (options.fit === "inside") {
+      return scaleTo(sourceWidth, sourceHeight, Math.min(targetWidth / sourceWidth, targetHeight / sourceHeight), options);
+    }
+
+    if (options.fit === "outside") {
+      return scaleTo(sourceWidth, sourceHeight, Math.max(targetWidth / sourceWidth, targetHeight / sourceHeight), options);
+    }
+
+    if (options.withoutEnlargement && sourceWidth <= targetWidth && sourceHeight <= targetHeight) {
+      return { width: sourceWidth, height: sourceHeight };
+    }
+
+    return { width: targetWidth, height: targetHeight };
+  }
+
+  if (targetWidth) {
+    return scaleTo(sourceWidth, sourceHeight, targetWidth / sourceWidth, options);
+  }
+
+  if (targetHeight) {
+    return scaleTo(sourceWidth, sourceHeight, targetHeight / sourceHeight, options);
+  }
+
+  return { width: sourceWidth, height: sourceHeight };
+}
+
+function scaleTo(width, height, scale, options) {
+  const safeScale = options.withoutEnlargement ? Math.min(1, scale) : scale;
+  return {
+    width: Math.max(1, Math.round(width * safeScale)),
+    height: Math.max(1, Math.round(height * safeScale))
+  };
 }

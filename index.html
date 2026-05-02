@@ -426,7 +426,7 @@
           </article>
           <article class="card">
             <h3>尺寸与裁剪</h3>
-            <p>支持 <code>scale-down</code>、<code>cover</code>、<code>contain</code>、<code>pad</code> 和 <code>crop</code>。</p>
+            <p>支持 sharp 原生 <code>inside</code>、<code>cover</code>、<code>contain</code>、<code>fill</code> 和 <code>outside</code>。</p>
           </article>
           <article class="card">
             <h3>WebP 优化</h3>
@@ -482,8 +482,8 @@
             </tr>
             <tr>
               <td><code>fit</code></td>
-              <td>缩放模式，支持 <code>scale-down</code>、<code>cover</code>、<code>contain</code>、<code>pad</code>、<code>crop</code>。</td>
-              <td><code>scale-down</code></td>
+              <td>sharp 原生缩放模式，支持 <code>inside</code>、<code>cover</code>、<code>contain</code>、<code>fill</code>、<code>outside</code>。</td>
+              <td><code>inside</code></td>
             </tr>
             <tr>
               <td><code>quality</code></td>
@@ -492,7 +492,7 @@
             </tr>
             <tr>
               <td><code>background</code></td>
-              <td><code>contain</code> 和 <code>pad</code> 的填充背景色，格式为 RRGGBB。</td>
+              <td><code>contain</code> 的填充背景色，格式为 RRGGBB。</td>
               <td><code>FFFFFF</code></td>
             </tr>
             <tr>

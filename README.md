@@ -165,10 +165,10 @@ IMAGE_URL_ALLOWLIST=example.com trusted-cdn.com
 | --- | --- | --- |
 | `width` | 未设置 | 目标宽度，单位为像素。最大值会被限制为 `1024`。 |
 | `height` | 未设置 | 目标高度，单位为像素。最大值会被限制为 `1024`。 |
-| `fit` | `scale-down` | 支持 `scale-down`、`contain`、`cover`、`pad`、`crop`。非法值会回退为 `scale-down`。 |
+| `fit` | `inside` | 使用 sharp 原生模式，支持 `cover`、`contain`、`fill`、`inside`、`outside`。非法值返回 `400`。 |
 | `quality` | `85` | WebP 输出质量，范围为 `1` 到 `100`。超出范围的值会被截断。 |
 | `format` | `webp` | 为未来格式扩展预留。当前版本只接受 `webp`。 |
-| `background` | `FFFFFF` | `contain` 和 `pad` 模式使用的十六进制 `RRGGBB` 背景色。非法值会回退为白色。 |
+| `background` | `FFFFFF` | `contain` 模式使用的十六进制 `RRGGBB` 背景色。非法值会回退为白色。 |
 | `rotate` | 未设置 | 支持 `90`、`180`、`270`。 |
 | `flip` | 未设置 | 支持 `h`、`v`、`hv`。 |
 
@@ -189,7 +189,7 @@ IMAGE_URL_ALLOWLIST=example.com trusted-cdn.com
 红色背景的正方形填充图：
 
 ```text
-/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&width=500&height=500&fit=pad&background=FF0000
+/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&width=500&height=500&fit=contain&background=FF0000
 ```
 
 旋转并翻转：

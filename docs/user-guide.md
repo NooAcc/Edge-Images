@@ -48,13 +48,13 @@ Responsive card image:
 Avatar without upscaling:
 
 ```text
-/api/image?url=<encoded-url>&width=256&height=256&fit=scale-down
+/api/image?url=<encoded-url>&width=256&height=256&fit=inside
 ```
 
 Product image with visible full object:
 
 ```text
-/api/image?url=<encoded-url>&width=800&height=800&fit=pad&background=FFFFFF
+/api/image?url=<encoded-url>&width=800&height=800&fit=contain&background=FFFFFF
 ```
 
 Lower bandwidth preview:
@@ -74,11 +74,11 @@ Lower bandwidth preview:
 
 `fit`
 
-- `scale-down`: default. Shrinks only when needed.
+- `inside`: default. Fit within the box without enlarging the source.
+- `cover`: fill the full box and crop overflow using sharp's native behavior.
 - `contain`: show the whole image inside the box and fill empty area.
-- `pad`: same behavior as `contain`.
-- `cover`: fill the full box and center-crop overflow.
-- `crop`: force output to the requested dimensions.
+- `fill`: force output to the requested dimensions.
+- `outside`: resize to cover at least one requested dimension without cropping.
 
 `quality`
 
@@ -89,13 +89,13 @@ Lower bandwidth preview:
 `background`
 
 - Six hex characters: `RRGGBB`.
-- Used by `contain` and `pad`.
+- Used by `contain`.
 - Invalid values default to `FFFFFF`.
 
 `rotate`
 
 - One of `90`, `180`, `270`.
-- Rotation is applied before resizing or cropping.
+- Rotation uses sharp's native operation order before resize.
 
 `flip`
 
@@ -129,7 +129,7 @@ This keeps pages usable even when a source image has an unsupported or damaged f
 - Configure `IMAGE_URL_ALLOWLIST` before exposing the service publicly.
 - Set `IMAGE_DEBUG_LOGS=1` locally when diagnosing source fetches, image processing, or original-image fallbacks.
 - Use `cover` for thumbnails and cards.
-- Use `pad` for product images where the full object should remain visible.
+- Use `contain` for product images where the full object should remain visible.
 - Keep source images reasonably sized; the service rejects source payloads above 50 MB.
 - Monitor Vercel function duration, bandwidth, and error rate after deployment.
 
@@ -145,6 +145,5 @@ Each line starts with `[image]` and contains a JSON record. Key events:
 
 - `image.source.fetch_bad_status`: the source server rejected the image request before processing.
 - `image.source.fetch_timeout`: the source response or body download exceeded the configured timeout.
-- `image.decode.done`: sharp read the source image metadata; `inputFormat` shows the detected source format.
-- `image.transform.plan`: the resize, crop, or padding plan selected for the request.
+- `image.transform.plan`: the sharp resize, rotate, and flip options selected for the request.
 - `image.request.processing_failed_fallback`: processing failed after a successful download, so the API returned the original bytes.
