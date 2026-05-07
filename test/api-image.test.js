@@ -241,7 +241,6 @@ test("api handler returns json metadata for format=json", async () => {
   assert.equal(body.size, 12345);
   assert.equal(body.channels, 3);
   assert.equal(body.sourceUrl, "https://example.com/photo.jpg");
-  assert.equal(body.sourceContentType, "image/jpeg");
   assert.equal(body.sourceBytes, "source-image-bytes".length);
 });
 
@@ -318,14 +317,10 @@ test("api handler returns avif content type for format=avif", async () => {
   assert.equal(res.headers["x-image-format"], "avif");
 });
 
-test("api handler extracts video frame and processes it for video/mp4 source", async () => {
+test("api handler extracts video frame for video/mp4 source", async () => {
   const handler = createImageHandler({
-    fetchImageImpl: async () => ({
-      buffer: Buffer.from("video-bytes"),
-      contentType: "video/mp4",
-    }),
-    extractVideoFrameImpl: async (buffer) => {
-      assert.equal(buffer.toString(), "video-bytes");
+    extractVideoFrameRangeImpl: async (url) => {
+      assert.equal(url, "https://example.com/clip.mp4");
       return Buffer.from("extracted-frame");
     },
     processImageImpl: async (buffer, params) => {
@@ -362,13 +357,9 @@ test("api handler extracts video frame and processes it for video/mp4 source", a
   assert.equal(res.body.toString(), "webp:800");
 });
 
-test("api handler extracts video frame and processes it for video/webm source", async () => {
+test("api handler extracts video frame for video/webm source", async () => {
   const handler = createImageHandler({
-    fetchImageImpl: async () => ({
-      buffer: Buffer.from("webm-bytes"),
-      contentType: "video/webm",
-    }),
-    extractVideoFrameImpl: async () => Buffer.from("extracted-frame"),
+    extractVideoFrameRangeImpl: async () => Buffer.from("extracted-frame"),
     processImageImpl: async (_buffer, params) => ({
       buffer: Buffer.from("webp-output"),
       metadata: {
@@ -398,18 +389,15 @@ test("api handler extracts video frame and processes it for video/webm source", 
 
 test("api handler returns video metadata for format=json with video source", async () => {
   const handler = createImageHandler({
-    fetchImageImpl: async () => ({
-      buffer: Buffer.from("video-bytes"),
-      contentType: "video/mp4",
-    }),
-    probeVideoMetadataImpl: async (buffer) => {
-      assert.equal(buffer.toString(), "video-bytes");
+    probeVideoMetadataFromUrlImpl: async (url) => {
+      assert.equal(url, "https://example.com/clip.mp4");
       return {
         width: 1920,
         height: 1080,
         codec: "h264",
         duration: 10.5,
         format: "mov,mp4,m4a,3gp,3g2,mj2",
+        bytesDownloaded: 524288,
       };
     },
   });
@@ -436,17 +424,12 @@ test("api handler returns video metadata for format=json with video source", asy
   assert.equal(body.duration, 10.5);
   assert.equal(body.format, "mov,mp4,m4a,3gp,3g2,mj2");
   assert.equal(body.sourceUrl, "https://example.com/clip.mp4");
-  assert.equal(body.sourceContentType, "video/mp4");
-  assert.equal(body.sourceBytes, "video-bytes".length);
+  assert.equal(body.bytesDownloaded, 524288);
 });
 
 test("api handler returns 502 when video frame extraction fails", async () => {
   const handler = createImageHandler({
-    fetchImageImpl: async () => ({
-      buffer: Buffer.from("bad-video"),
-      contentType: "video/mp4",
-    }),
-    extractVideoFrameImpl: async () => {
+    extractVideoFrameRangeImpl: async () => {
       throw new Error("ffmpeg frame extraction failed");
     },
   });
@@ -469,11 +452,7 @@ test("api handler returns 502 when video frame extraction fails", async () => {
 
 test("api handler returns 502 when video probe fails for format=json", async () => {
   const handler = createImageHandler({
-    fetchImageImpl: async () => ({
-      buffer: Buffer.from("bad-video"),
-      contentType: "video/webm",
-    }),
-    probeVideoMetadataImpl: async () => {
+    probeVideoMetadataFromUrlImpl: async () => {
       throw new Error("No video stream found");
     },
   });

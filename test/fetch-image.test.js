@@ -100,42 +100,25 @@ test("fetchImage rejects non-image content", async () => {
             headers: { "content-type": "text/html" }
           })
       }),
-    /did not return an image or video/
+    /did not return an image/
   );
 });
 
-test("fetchImage accepts video/mp4 content type", async () => {
-  const result = await fetchImage("https://example.com/clip.mp4", {
-    fetchImpl: async () =>
-      fakeResponse({
-        body: Buffer.from("mp4"),
-        headers: {
-          "content-type": "video/mp4",
-          "content-length": "3"
-        }
-      })
-  });
-
-  assert.equal(result.contentType, "video/mp4");
-  assert.equal(result.buffer.toString(), "mp4");
-  assert.equal(result.status, 200);
-});
-
-test("fetchImage accepts video/webm content type", async () => {
-  const result = await fetchImage("https://example.com/clip.webm", {
-    fetchImpl: async () =>
-      fakeResponse({
-        body: Buffer.from("webm"),
-        headers: {
-          "content-type": "video/webm",
-          "content-length": "4"
-        }
-      })
-  });
-
-  assert.equal(result.contentType, "video/webm");
-  assert.equal(result.buffer.toString(), "webm");
-  assert.equal(result.status, 200);
+test("fetchImage rejects video content types", async () => {
+  await assert.rejects(
+    () =>
+      fetchImage("https://example.com/clip.mp4", {
+        fetchImpl: async () =>
+          fakeResponse({
+            body: Buffer.from("mp4"),
+            headers: {
+              "content-type": "video/mp4",
+              "content-length": "3"
+            }
+          })
+      }),
+    /did not return an image/
+  );
 });
 
 test("fetchImage enforces source size limits", async () => {

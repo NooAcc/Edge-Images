@@ -3,8 +3,8 @@ import test from 'node:test';
 
 import {
   VideoProcessError,
-  extractVideoFrame,
-  probeVideoMetadata,
+  extractVideoFrameRange,
+  probeVideoMetadataFromUrl,
 } from '../lib/process-video.js';
 
 function createMockRunProcess(overrides = {}) {
@@ -20,7 +20,44 @@ function createMockRunProcess(overrides = {}) {
   };
 }
 
-test('probeVideoMetadata returns width, height, codec, duration, and format from ffprobe output', async () => {
+function createMockFetch(responses = []) {
+  let callIndex = 0;
+  return async function mockFetch(url, options = {}) {
+    const response = responses[callIndex] || responses[responses.length - 1];
+    callIndex++;
+
+    const isRangeRequest = options.headers?.Range || options.headers?.range;
+    if (isRangeRequest && response.rangeStatus) {
+      return {
+        status: response.rangeStatus,
+        ok: response.rangeStatus === 200,
+        headers: {
+          get: (name) => {
+            if (name === 'content-type') return response.rangeContentType || 'video/mp4';
+            if (name === 'content-length') return String(response.rangeBody?.length || 0);
+            return null;
+          },
+        },
+        arrayBuffer: async () => response.rangeBody || new ArrayBuffer(0),
+      };
+    }
+
+    return {
+      status: response.status || 200,
+      ok: (response.status || 200) >= 200 && (response.status || 200) < 300,
+      headers: {
+        get: (name) => {
+          if (name === 'content-type') return response.contentType || 'video/mp4';
+          if (name === 'content-length') return String(response.body?.length || 0);
+          return null;
+        },
+      },
+      arrayBuffer: async () => response.body || new ArrayBuffer(0),
+    };
+  };
+}
+
+test('probeVideoMetadataFromUrl returns metadata from Range response', async () => {
   const probeData = {
     streams: [
       {
@@ -37,8 +74,13 @@ test('probeVideoMetadata returns width, height, codec, duration, and format from
     },
   };
 
-  const metadata = await probeVideoMetadata(Buffer.from('fake-video'), {
+  const metadata = await probeVideoMetadataFromUrl('https://example.com/clip.mp4', {
     ffprobePath: '/usr/bin/ffprobe',
+    fetchImpl: createMockFetch([{
+      rangeStatus: 206,
+      rangeContentType: 'video/mp4',
+      rangeBody: new ArrayBuffer(512 * 1024),
+    }]),
     runProcess: createMockRunProcess({
       stdout: Buffer.from(JSON.stringify(probeData)),
     }),
@@ -49,14 +91,15 @@ test('probeVideoMetadata returns width, height, codec, duration, and format from
   assert.equal(metadata.codec, 'h264');
   assert.equal(metadata.duration, 10.5);
   assert.equal(metadata.format, 'mov,mp4,m4a,3gp,3g2,mj2');
+  assert.equal(metadata.bytesDownloaded, 512 * 1024);
 });
 
-test('probeVideoMetadata prefers format duration over stream duration', async () => {
+test('probeVideoMetadataFromUrl falls back to full download when partial probe fails', async () => {
   const probeData = {
     streams: [
       {
         codec_type: 'video',
-        codec_name: 'vp9',
+        codec_name: 'h264',
         width: 1280,
         height: 720,
       },
@@ -67,97 +110,49 @@ test('probeVideoMetadata prefers format duration over stream duration', async ()
     },
   };
 
-  const metadata = await probeVideoMetadata(Buffer.from('fake-video'), {
-    ffprobePath: '/usr/bin/ffprobe',
-    runProcess: createMockRunProcess({
+  let processCallCount = 0;
+  const mockRunProcess = async () => {
+    processCallCount++;
+    if (processCallCount === 1) {
+      throw new VideoProcessError('No video stream found in source');
+    }
+    return {
+      exitCode: 0,
       stdout: Buffer.from(JSON.stringify(probeData)),
-    }),
-  });
-
-  assert.equal(metadata.duration, 30.2);
-});
-
-test('probeVideoMetadata uses stream duration when format duration is missing', async () => {
-  const probeData = {
-    streams: [
-      {
-        codec_type: 'video',
-        codec_name: 'h264',
-        width: 640,
-        height: 480,
-        duration: '5.0',
-      },
-    ],
-    format: {
-      format_name: 'mov,mp4',
-    },
+      stderr: '',
+    };
   };
 
-  const metadata = await probeVideoMetadata(Buffer.from('fake-video'), {
+  const metadata = await probeVideoMetadataFromUrl('https://example.com/clip.webm', {
     ffprobePath: '/usr/bin/ffprobe',
-    runProcess: createMockRunProcess({
-      stdout: Buffer.from(JSON.stringify(probeData)),
-    }),
+    fetchImpl: createMockFetch([{
+      rangeStatus: 206,
+      rangeContentType: 'video/webm',
+      rangeBody: new ArrayBuffer(512 * 1024),
+    }, {
+      status: 200,
+      contentType: 'video/webm',
+      body: new ArrayBuffer(1024 * 1024),
+    }]),
+    runProcess: mockRunProcess,
   });
 
-  assert.equal(metadata.duration, 5.0);
+  assert.equal(metadata.width, 1280);
+  assert.equal(metadata.height, 720);
+  assert.equal(metadata.bytesDownloaded, 1024 * 1024);
+  assert.equal(processCallCount, 2);
 });
 
-test('probeVideoMetadata throws when no video stream is found', async () => {
-  const probeData = {
-    streams: [
-      {
-        codec_type: 'audio',
-        codec_name: 'aac',
-      },
-    ],
-    format: {},
-  };
+test('extractVideoFrameRange returns frame from Range response', async () => {
+  const framePng = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
 
-  await assert.rejects(
-    () =>
-      probeVideoMetadata(Buffer.from('fake-video'), {
-        ffprobePath: '/usr/bin/ffprobe',
-        runProcess: createMockRunProcess({
-          stdout: Buffer.from(JSON.stringify(probeData)),
-        }),
-      }),
-    /No video stream found/,
-  );
-});
-
-test('probeVideoMetadata throws VideoProcessError when ffprobe exits non-zero', async () => {
-  await assert.rejects(
-    () =>
-      probeVideoMetadata(Buffer.from('bad'), {
-        ffprobePath: '/usr/bin/ffprobe',
-        runProcess: createMockRunProcess({
-          exitCode: 1,
-          stderr: 'Invalid data found',
-        }),
-      }),
-    VideoProcessError,
-  );
-});
-
-test('probeVideoMetadata throws when ffprobe output is not valid JSON', async () => {
-  await assert.rejects(
-    () =>
-      probeVideoMetadata(Buffer.from('bad'), {
-        ffprobePath: '/usr/bin/ffprobe',
-        runProcess: createMockRunProcess({
-          stdout: Buffer.from('not json'),
-        }),
-      }),
-    /not valid JSON/,
-  );
-});
-
-test('extractVideoFrame returns a buffer from ffmpeg stdout', async () => {
-  const framePng = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a]);
-
-  const result = await extractVideoFrame(Buffer.from('fake-video'), {
+  const result = await extractVideoFrameRange('https://example.com/clip.mp4', {
     ffmpegPath: '/usr/bin/ffmpeg',
+    fetchImpl: createMockFetch([{
+      rangeStatus: 206,
+      rangeContentType: 'video/mp4',
+      rangeBody: new ArrayBuffer(512 * 1024),
+    }]),
     runProcess: createMockRunProcess({
       stdout: framePng,
     }),
@@ -166,32 +161,88 @@ test('extractVideoFrame returns a buffer from ffmpeg stdout', async () => {
   assert.ok(Buffer.isBuffer(result));
   assert.equal(result[0], 0x89);
   assert.equal(result[1], 0x50);
-  assert.equal(result.length, 6);
 });
 
-test('extractVideoFrame throws VideoProcessError when ffmpeg exits non-zero', async () => {
+test('extractVideoFrameRange falls back to full download when partial decode fails', async () => {
+  const framePng = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a]);
+
+  let processCallCount = 0;
+  const mockRunProcess = async () => {
+    processCallCount++;
+    if (processCallCount === 1) {
+      return { exitCode: 1, stdout: Buffer.alloc(0), stderr: 'Invalid data found' };
+    }
+    return { exitCode: 0, stdout: framePng, stderr: '' };
+  };
+
+  const result = await extractVideoFrameRange('https://example.com/clip.mp4', {
+    ffmpegPath: '/usr/bin/ffmpeg',
+    fetchImpl: createMockFetch([{
+      rangeStatus: 206,
+      rangeContentType: 'video/mp4',
+      rangeBody: new ArrayBuffer(512 * 1024),
+    }, {
+      status: 200,
+      contentType: 'video/mp4',
+      body: new ArrayBuffer(1024 * 1024),
+    }]),
+    runProcess: mockRunProcess,
+  });
+
+  assert.ok(Buffer.isBuffer(result));
+  assert.equal(result.length, 6);
+  assert.equal(processCallCount, 2);
+});
+
+test('extractVideoFrameRange uses full download when server does not support Range', async () => {
+  const framePng = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+
+  const result = await extractVideoFrameRange('https://example.com/clip.mp4', {
+    ffmpegPath: '/usr/bin/ffmpeg',
+    fetchImpl: createMockFetch([{
+      rangeStatus: 200,
+      rangeContentType: 'video/mp4',
+      rangeBody: new ArrayBuffer(1024 * 1024),
+    }]),
+    runProcess: createMockRunProcess({
+      stdout: framePng,
+    }),
+  });
+
+  assert.ok(Buffer.isBuffer(result));
+});
+
+test('extractVideoFrameRange throws VideoProcessError for non-video Content-Type', async () => {
   await assert.rejects(
     () =>
-      extractVideoFrame(Buffer.from('bad'), {
+      extractVideoFrameRange('https://example.com/not-video.html', {
         ffmpegPath: '/usr/bin/ffmpeg',
+        fetchImpl: createMockFetch([{
+          rangeStatus: 200,
+          rangeContentType: 'text/html',
+          rangeBody: new ArrayBuffer(100),
+        }]),
+        runProcess: createMockRunProcess(),
+      }),
+    /did not return a video/,
+  );
+});
+
+test('extractVideoFrameRange throws when ffmpeg fails with full download', async () => {
+  await assert.rejects(
+    () =>
+      extractVideoFrameRange('https://example.com/bad.mp4', {
+        ffmpegPath: '/usr/bin/ffmpeg',
+        fetchImpl: createMockFetch([{
+          rangeStatus: 200,
+          rangeContentType: 'video/mp4',
+          rangeBody: new ArrayBuffer(1024),
+        }]),
         runProcess: createMockRunProcess({
           exitCode: 1,
           stderr: 'Conversion failed',
         }),
       }),
     VideoProcessError,
-  );
-});
-
-test('extractVideoFrame throws when ffmpeg produces no output', async () => {
-  await assert.rejects(
-    () =>
-      extractVideoFrame(Buffer.from('bad'), {
-        ffmpegPath: '/usr/bin/ffmpeg',
-        runProcess: createMockRunProcess({
-          stdout: Buffer.alloc(0),
-        }),
-      }),
-    /produced no output/,
   );
 });

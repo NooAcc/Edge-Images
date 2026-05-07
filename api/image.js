@@ -2,17 +2,17 @@ import { fetchImage } from "../lib/fetch-image.js";
 import { createImageLogger } from "../lib/image-logger.js";
 import { ParamError, parseParams } from "../lib/parse-params.js";
 import { FORMAT_CONTENT_TYPES, processImage } from "../lib/process-image.js";
-import { extractVideoFrame, probeVideoMetadata } from "../lib/process-video.js";
+import { extractVideoFrameRange, probeVideoMetadataFromUrl } from "../lib/process-video.js";
 
 export const CACHE_CONTROL = "public, max-age=31536000, immutable";
 export const PROCESSOR_NAME = "vercel-node-image";
-const VIDEO_CONTENT_TYPES = new Set(["video/mp4", "video/webm"]);
+const VIDEO_EXTENSIONS = /\.(mp4|webm)(\?.*)?$/i;
 
 export function createImageHandler({
   fetchImageImpl = fetchImage,
   processImageImpl = processImage,
-  probeVideoMetadataImpl = probeVideoMetadata,
-  extractVideoFrameImpl = extractVideoFrame,
+  probeVideoMetadataFromUrlImpl = probeVideoMetadataFromUrl,
+  extractVideoFrameRangeImpl = extractVideoFrameRange,
   logger = console,
 } = {}) {
   return async function imageHandler(req, res) {
@@ -54,6 +54,8 @@ export function createImageHandler({
       return sendJson(res, 500, { error: "Internal Server Error" });
     }
 
+    const isVideo = VIDEO_EXTENSIONS.test(params.url);
+
     requestLogger.info("image.request.params", {
       sourceUrl: params.url,
       sourceHost: getUrlHost(params.url),
@@ -64,43 +66,17 @@ export function createImageHandler({
       format: params.format,
       rotate: params.rotate,
       flip: params.flip || "",
+      isVideo,
     });
-
-    let source;
-    try {
-      source = await fetchImageImpl(params.url, {
-        logger: requestLogger,
-      });
-    } catch (error) {
-      requestLogger.warn("image.request.fetch_failed", {
-        error,
-        status: error?.status,
-        sourceUrl: params.url,
-        sourceHost: getUrlHost(params.url),
-      });
-
-      return sendJson(
-        res,
-        502,
-        {
-          error: "Bad Gateway",
-          details: sanitizeHeaderValue(error?.message || "Source image fetch failed"),
-        },
-        { "X-Processor": PROCESSOR_NAME },
-      );
-    }
-
-    const isVideo = VIDEO_CONTENT_TYPES.has((source.contentType || "").split(";")[0].trim().toLowerCase());
 
     if (isVideo && params.format === "json") {
       try {
-        const videoMetadata = await probeVideoMetadataImpl(source.buffer, {
+        const videoMetadata = await probeVideoMetadataFromUrlImpl(params.url, {
           logger: requestLogger,
         });
 
         requestLogger.info("image.request.success", {
           statusCode: 200,
-          sourceBytes: source.buffer.length,
           videoMetadata,
         });
 
@@ -111,14 +87,12 @@ export function createImageHandler({
           duration: videoMetadata.duration,
           format: videoMetadata.format,
           sourceUrl: params.url,
-          sourceContentType: source.contentType || "",
-          sourceBytes: source.buffer.length,
+          bytesDownloaded: videoMetadata.bytesDownloaded,
         });
       } catch (error) {
         requestLogger.warn("image.request.video_probe_failed", {
           error,
-          sourceBytes: source.buffer.length,
-          sourceContentType: source.contentType || "",
+          sourceUrl: params.url,
         });
 
         return sendJson(res, 502, {
@@ -128,17 +102,21 @@ export function createImageHandler({
       }
     }
 
-    let imageBuffer = source.buffer;
+    let imageBuffer;
+    let sourceBytes;
+    let sourceContentType;
+
     if (isVideo) {
       try {
-        imageBuffer = await extractVideoFrameImpl(source.buffer, {
+        imageBuffer = await extractVideoFrameRangeImpl(params.url, {
           logger: requestLogger,
         });
+        sourceBytes = imageBuffer.length;
+        sourceContentType = "image/png";
       } catch (error) {
         requestLogger.warn("image.request.video_frame_failed", {
           error,
-          sourceBytes: source.buffer.length,
-          sourceContentType: source.contentType || "",
+          sourceUrl: params.url,
         });
 
         return sendJson(res, 502, {
@@ -146,6 +124,34 @@ export function createImageHandler({
           details: sanitizeHeaderValue(error?.message || "Video frame extraction failed"),
         }, { "X-Processor": PROCESSOR_NAME });
       }
+    } else {
+      let source;
+      try {
+        source = await fetchImageImpl(params.url, {
+          logger: requestLogger,
+        });
+      } catch (error) {
+        requestLogger.warn("image.request.fetch_failed", {
+          error,
+          status: error?.status,
+          sourceUrl: params.url,
+          sourceHost: getUrlHost(params.url),
+        });
+
+        return sendJson(
+          res,
+          502,
+          {
+            error: "Bad Gateway",
+            details: sanitizeHeaderValue(error?.message || "Source image fetch failed"),
+          },
+          { "X-Processor": PROCESSOR_NAME },
+        );
+      }
+
+      imageBuffer = source.buffer;
+      sourceBytes = source.buffer.length;
+      sourceContentType = source.contentType;
     }
 
     try {
@@ -153,7 +159,7 @@ export function createImageHandler({
         imageBuffer,
         {
           ...params,
-          sourceContentType: isVideo ? "image/png" : source.contentType,
+          sourceContentType,
         },
         {
           logger: requestLogger,
@@ -165,7 +171,7 @@ export function createImageHandler({
 
       requestLogger.info("image.request.success", {
         statusCode: 200,
-        sourceBytes: source.buffer.length,
+        sourceBytes,
         outputBytes: buffer.length,
         outputContentType,
         metadata,
@@ -179,8 +185,7 @@ export function createImageHandler({
           size: metadata.size,
           channels: metadata.channels,
           sourceUrl: params.url,
-          sourceContentType: source.contentType || "",
-          sourceBytes: source.buffer.length,
+          sourceBytes,
         });
       }
 
@@ -196,13 +201,11 @@ export function createImageHandler({
     } catch (error) {
       requestLogger.warn("image.request.processing_failed_fallback", {
         error,
-        sourceBytes: source.buffer.length,
-        sourceContentType: source.contentType || "",
-        fallbackContentType: source.contentType || "application/octet-stream",
+        sourceBytes,
       });
 
-      return sendBuffer(res, 200, source.buffer, {
-        "Content-Type": source.contentType || "application/octet-stream",
+      return sendBuffer(res, 200, imageBuffer, {
+        "Content-Type": sourceContentType || "application/octet-stream",
         "Cache-Control": CACHE_CONTROL,
         "X-Processor": PROCESSOR_NAME,
         "X-Processing-Error": sanitizeHeaderValue(error?.message || "Image processing failed"),
