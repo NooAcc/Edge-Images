@@ -2,13 +2,17 @@ import { fetchImage } from "../lib/fetch-image.js";
 import { createImageLogger } from "../lib/image-logger.js";
 import { ParamError, parseParams } from "../lib/parse-params.js";
 import { FORMAT_CONTENT_TYPES, processImage } from "../lib/process-image.js";
+import { extractVideoFrame, probeVideoMetadata } from "../lib/process-video.js";
 
 export const CACHE_CONTROL = "public, max-age=31536000, immutable";
 export const PROCESSOR_NAME = "vercel-node-image";
+const VIDEO_CONTENT_TYPES = new Set(["video/mp4", "video/webm"]);
 
 export function createImageHandler({
   fetchImageImpl = fetchImage,
   processImageImpl = processImage,
+  probeVideoMetadataImpl = probeVideoMetadata,
+  extractVideoFrameImpl = extractVideoFrame,
   logger = console,
 } = {}) {
   return async function imageHandler(req, res) {
@@ -86,12 +90,70 @@ export function createImageHandler({
       );
     }
 
+    const isVideo = VIDEO_CONTENT_TYPES.has((source.contentType || "").split(";")[0].trim().toLowerCase());
+
+    if (isVideo && params.format === "json") {
+      try {
+        const videoMetadata = await probeVideoMetadataImpl(source.buffer, {
+          logger: requestLogger,
+        });
+
+        requestLogger.info("image.request.success", {
+          statusCode: 200,
+          sourceBytes: source.buffer.length,
+          videoMetadata,
+        });
+
+        return sendJson(res, 200, {
+          width: videoMetadata.width,
+          height: videoMetadata.height,
+          codec: videoMetadata.codec,
+          duration: videoMetadata.duration,
+          format: videoMetadata.format,
+          sourceUrl: params.url,
+          sourceContentType: source.contentType || "",
+          sourceBytes: source.buffer.length,
+        });
+      } catch (error) {
+        requestLogger.warn("image.request.video_probe_failed", {
+          error,
+          sourceBytes: source.buffer.length,
+          sourceContentType: source.contentType || "",
+        });
+
+        return sendJson(res, 502, {
+          error: "Bad Gateway",
+          details: sanitizeHeaderValue(error?.message || "Video probe failed"),
+        }, { "X-Processor": PROCESSOR_NAME });
+      }
+    }
+
+    let imageBuffer = source.buffer;
+    if (isVideo) {
+      try {
+        imageBuffer = await extractVideoFrameImpl(source.buffer, {
+          logger: requestLogger,
+        });
+      } catch (error) {
+        requestLogger.warn("image.request.video_frame_failed", {
+          error,
+          sourceBytes: source.buffer.length,
+          sourceContentType: source.contentType || "",
+        });
+
+        return sendJson(res, 502, {
+          error: "Bad Gateway",
+          details: sanitizeHeaderValue(error?.message || "Video frame extraction failed"),
+        }, { "X-Processor": PROCESSOR_NAME });
+      }
+    }
+
     try {
       const result = await processImageImpl(
-        source.buffer,
+        imageBuffer,
         {
           ...params,
-          sourceContentType: source.contentType,
+          sourceContentType: isVideo ? "image/png" : source.contentType,
         },
         {
           logger: requestLogger,

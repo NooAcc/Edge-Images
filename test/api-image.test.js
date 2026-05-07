@@ -318,6 +318,182 @@ test("api handler returns avif content type for format=avif", async () => {
   assert.equal(res.headers["x-image-format"], "avif");
 });
 
+test("api handler extracts video frame and processes it for video/mp4 source", async () => {
+  const handler = createImageHandler({
+    fetchImageImpl: async () => ({
+      buffer: Buffer.from("video-bytes"),
+      contentType: "video/mp4",
+    }),
+    extractVideoFrameImpl: async (buffer) => {
+      assert.equal(buffer.toString(), "video-bytes");
+      return Buffer.from("extracted-frame");
+    },
+    processImageImpl: async (buffer, params) => {
+      assert.equal(buffer.toString(), "extracted-frame");
+      assert.equal(params.sourceContentType, "image/png");
+      return {
+        buffer: Buffer.from(`webp:${params.width}`),
+        metadata: {
+          width: params.width || 1024,
+          height: 576,
+          format: "webp",
+          size: 8900,
+          channels: 3,
+        },
+      };
+    },
+  });
+  const res = createMockResponse();
+
+  await handler(
+    {
+      method: "GET",
+      query: {
+        url: "https://example.com/clip.mp4",
+        width: "800",
+      },
+    },
+    res,
+  );
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.headers["content-type"], "image/webp");
+  assert.equal(res.headers["x-image-width"], "800");
+  assert.equal(res.body.toString(), "webp:800");
+});
+
+test("api handler extracts video frame and processes it for video/webm source", async () => {
+  const handler = createImageHandler({
+    fetchImageImpl: async () => ({
+      buffer: Buffer.from("webm-bytes"),
+      contentType: "video/webm",
+    }),
+    extractVideoFrameImpl: async () => Buffer.from("extracted-frame"),
+    processImageImpl: async (_buffer, params) => ({
+      buffer: Buffer.from("webp-output"),
+      metadata: {
+        width: params.width || 1024,
+        height: 576,
+        format: "webp",
+        size: 5000,
+        channels: 3,
+      },
+    }),
+  });
+  const res = createMockResponse();
+
+  await handler(
+    {
+      method: "GET",
+      query: {
+        url: "https://example.com/clip.webm",
+      },
+    },
+    res,
+  );
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.headers["content-type"], "image/webp");
+});
+
+test("api handler returns video metadata for format=json with video source", async () => {
+  const handler = createImageHandler({
+    fetchImageImpl: async () => ({
+      buffer: Buffer.from("video-bytes"),
+      contentType: "video/mp4",
+    }),
+    probeVideoMetadataImpl: async (buffer) => {
+      assert.equal(buffer.toString(), "video-bytes");
+      return {
+        width: 1920,
+        height: 1080,
+        codec: "h264",
+        duration: 10.5,
+        format: "mov,mp4,m4a,3gp,3g2,mj2",
+      };
+    },
+  });
+  const res = createMockResponse();
+
+  await handler(
+    {
+      method: "GET",
+      query: {
+        url: "https://example.com/clip.mp4",
+        format: "json",
+      },
+    },
+    res,
+  );
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.headers["content-type"], "application/json; charset=utf-8");
+
+  const body = JSON.parse(res.body.toString());
+  assert.equal(body.width, 1920);
+  assert.equal(body.height, 1080);
+  assert.equal(body.codec, "h264");
+  assert.equal(body.duration, 10.5);
+  assert.equal(body.format, "mov,mp4,m4a,3gp,3g2,mj2");
+  assert.equal(body.sourceUrl, "https://example.com/clip.mp4");
+  assert.equal(body.sourceContentType, "video/mp4");
+  assert.equal(body.sourceBytes, "video-bytes".length);
+});
+
+test("api handler returns 502 when video frame extraction fails", async () => {
+  const handler = createImageHandler({
+    fetchImageImpl: async () => ({
+      buffer: Buffer.from("bad-video"),
+      contentType: "video/mp4",
+    }),
+    extractVideoFrameImpl: async () => {
+      throw new Error("ffmpeg frame extraction failed");
+    },
+  });
+  const res = createMockResponse();
+
+  await handler(
+    {
+      method: "GET",
+      query: {
+        url: "https://example.com/bad.mp4",
+        width: "400",
+      },
+    },
+    res,
+  );
+
+  assert.equal(res.statusCode, 502);
+  assert.match(res.body.toString(), /Bad Gateway/);
+});
+
+test("api handler returns 502 when video probe fails for format=json", async () => {
+  const handler = createImageHandler({
+    fetchImageImpl: async () => ({
+      buffer: Buffer.from("bad-video"),
+      contentType: "video/webm",
+    }),
+    probeVideoMetadataImpl: async () => {
+      throw new Error("No video stream found");
+    },
+  });
+  const res = createMockResponse();
+
+  await handler(
+    {
+      method: "GET",
+      query: {
+        url: "https://example.com/bad.webm",
+        format: "json",
+      },
+    },
+    res,
+  );
+
+  assert.equal(res.statusCode, 502);
+  assert.match(res.body.toString(), /Bad Gateway/);
+});
+
 function createMockResponse() {
   return {
     statusCode: 200,
