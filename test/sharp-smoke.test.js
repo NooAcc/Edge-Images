@@ -12,16 +12,16 @@ test("smoke: actual sharp pipeline decodes PNG and emits WebP bytes", async () =
     [255, 255, 255, 255]
   ]);
 
-  const output = await processImage(png, {
+  const { buffer } = await processImage(png, {
     fit: "inside",
     quality: 85,
     background: [255, 255, 255],
     flip: ""
   });
 
-  assert.equal(output.slice(0, 4).toString("ascii"), "RIFF");
-  assert.equal(output.slice(8, 12).toString("ascii"), "WEBP");
-  assert.ok(output.length > 32);
+  assert.equal(buffer.slice(0, 4).toString("ascii"), "RIFF");
+  assert.equal(buffer.slice(8, 12).toString("ascii"), "WEBP");
+  assert.ok(buffer.length > 32);
 });
 
 test("smoke: actual WebP output preserves transparent alpha", async () => {
@@ -30,7 +30,7 @@ test("smoke: actual WebP output preserves transparent alpha", async () => {
     [0, 0, 255, 255]
   ]);
 
-  const output = await processImage(png, {
+  const { buffer: output } = await processImage(png, {
     fit: "inside",
     quality: 85,
     background: [255, 255, 255],

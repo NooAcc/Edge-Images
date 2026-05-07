@@ -10,8 +10,8 @@ export function makeImageBytes(width, height, options = {}) {
       width,
       height,
       format: options.format || "jpeg",
-      firstPixel: options.firstPixel || [11, 22, 33, 255]
-    })
+      firstPixel: options.firstPixel || [11, 22, 33, 255],
+    }),
   );
 }
 
@@ -28,6 +28,8 @@ class FakeSharpPipeline {
     this.format = payload.format || "jpeg";
     this.firstPixel = payload.firstPixel || [11, 22, 33, 255];
     this.quality = undefined;
+    this.outputFormat = "webp";
+    this.formatOptions = {};
     this.flippedH = false;
     this.flippedV = false;
   }
@@ -36,7 +38,7 @@ class FakeSharpPipeline {
     return {
       width: this.width,
       height: this.height,
-      format: this.format
+      format: this.format,
     };
   }
 
@@ -44,7 +46,7 @@ class FakeSharpPipeline {
     this.log.push({
       op: "rotate",
       from: [this.width, this.height],
-      angle
+      angle,
     });
 
     if (angle === 90 || angle === 270) {
@@ -70,7 +72,7 @@ class FakeSharpPipeline {
     this.log.push({
       op: "extract",
       from: [this.width, this.height],
-      box: [left, top, width, height]
+      box: [left, top, width, height],
     });
     this.width = width;
     this.height = height;
@@ -86,7 +88,7 @@ class FakeSharpPipeline {
       to: [next.width, next.height],
       options: { ...options },
       fit: options.fit,
-      background: options.background
+      background: options.background,
     });
     this.width = next.width;
     this.height = next.height;
@@ -96,7 +98,7 @@ class FakeSharpPipeline {
         options.background.r,
         options.background.g,
         options.background.b,
-        Math.round(options.background.alpha * 255)
+        Math.round(options.background.alpha * 255),
       ];
     }
 
@@ -104,8 +106,30 @@ class FakeSharpPipeline {
   }
 
   webp(options) {
+    this.outputFormat = "webp";
     this.quality = options.quality;
-    this.webpOptions = { ...options };
+    this.formatOptions = { ...options };
+    return this;
+  }
+
+  jpeg(options) {
+    this.outputFormat = "jpeg";
+    this.quality = options.quality;
+    this.formatOptions = { ...options };
+    return this;
+  }
+
+  png(options) {
+    this.outputFormat = "png";
+    this.quality = options.quality;
+    this.formatOptions = { ...options };
+    return this;
+  }
+
+  avif(options) {
+    this.outputFormat = "avif";
+    this.quality = options.quality;
+    this.formatOptions = { ...options };
     return this;
   }
 
@@ -115,22 +139,24 @@ class FakeSharpPipeline {
         width: this.width,
         height: this.height,
         quality: this.quality,
-        webpOptions: this.webpOptions,
+        outputFormat: this.outputFormat,
+        formatOptions: this.formatOptions,
         firstPixel: this.firstPixel,
         flippedH: this.flippedH,
-        flippedV: this.flippedV
-      })
+        flippedV: this.flippedV,
+      }),
     );
 
     if (options.resolveWithObject) {
       return {
         data,
         info: {
-          format: "webp",
+          format: this.outputFormat,
           size: data.byteLength,
           width: this.width,
-          height: this.height
-        }
+          height: this.height,
+          channels: 3,
+        },
       };
     }
 
@@ -144,11 +170,21 @@ function resolveResize(sourceWidth, sourceHeight, options) {
 
   if (targetWidth && targetHeight) {
     if (options.fit === "inside") {
-      return scaleTo(sourceWidth, sourceHeight, Math.min(targetWidth / sourceWidth, targetHeight / sourceHeight), options);
+      return scaleTo(
+        sourceWidth,
+        sourceHeight,
+        Math.min(targetWidth / sourceWidth, targetHeight / sourceHeight),
+        options,
+      );
     }
 
     if (options.fit === "outside") {
-      return scaleTo(sourceWidth, sourceHeight, Math.max(targetWidth / sourceWidth, targetHeight / sourceHeight), options);
+      return scaleTo(
+        sourceWidth,
+        sourceHeight,
+        Math.max(targetWidth / sourceWidth, targetHeight / sourceHeight),
+        options,
+      );
     }
 
     if (options.withoutEnlargement && sourceWidth <= targetWidth && sourceHeight <= targetHeight) {
@@ -173,6 +209,6 @@ function scaleTo(width, height, scale, options) {
   const safeScale = options.withoutEnlargement ? Math.min(1, scale) : scale;
   return {
     width: Math.max(1, Math.round(width * safeScale)),
-    height: Math.max(1, Math.round(height * safeScale))
+    height: Math.max(1, Math.round(height * safeScale)),
   };
 }

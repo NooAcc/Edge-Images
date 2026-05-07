@@ -1,7 +1,7 @@
 import { fetchImage } from "../lib/fetch-image.js";
 import { createImageLogger } from "../lib/image-logger.js";
 import { ParamError, parseParams } from "../lib/parse-params.js";
-import { processImage } from "../lib/process-image.js";
+import { FORMAT_CONTENT_TYPES, processImage } from "../lib/process-image.js";
 
 export const CACHE_CONTROL = "public, max-age=31536000, immutable";
 export const PROCESSOR_NAME = "vercel-node-image";
@@ -9,7 +9,7 @@ export const PROCESSOR_NAME = "vercel-node-image";
 export function createImageHandler({
   fetchImageImpl = fetchImage,
   processImageImpl = processImage,
-  logger = console
+  logger = console,
 } = {}) {
   return async function imageHandler(req, res) {
     const requestLogger = createImageLogger({
@@ -17,18 +17,18 @@ export function createImageHandler({
       sink: logger,
       requestId: getRequestId(req),
       base: {
-        route: "/api/image"
-      }
+        route: "/api/image",
+      },
     });
 
     requestLogger.info("image.request.start", {
       method: req.method || "GET",
-      path: getRequestPath(req)
+      path: getRequestPath(req),
     });
 
     if (req.method && req.method !== "GET") {
       requestLogger.warn("image.request.method_not_allowed", {
-        method: req.method
+        method: req.method,
       });
       return sendJson(res, 405, { error: "Method Not Allowed" }, { Allow: "GET" });
     }
@@ -39,13 +39,13 @@ export function createImageHandler({
     } catch (error) {
       if (error instanceof ParamError) {
         requestLogger.warn("image.request.param_error", {
-          error
+          error,
         });
         return sendJson(res, 400, { error: error.message });
       }
 
       requestLogger.error("image.request.param_unexpected_error", {
-        error
+        error,
       });
       return sendJson(res, 500, { error: "Internal Server Error" });
     }
@@ -59,20 +59,20 @@ export function createImageHandler({
       quality: params.quality,
       format: params.format,
       rotate: params.rotate,
-      flip: params.flip || ""
+      flip: params.flip || "",
     });
 
     let source;
     try {
       source = await fetchImageImpl(params.url, {
-        logger: requestLogger
+        logger: requestLogger,
       });
     } catch (error) {
       requestLogger.warn("image.request.fetch_failed", {
         error,
         status: error?.status,
         sourceUrl: params.url,
-        sourceHost: getUrlHost(params.url)
+        sourceHost: getUrlHost(params.url),
       });
 
       return sendJson(
@@ -80,49 +80,70 @@ export function createImageHandler({
         502,
         {
           error: "Bad Gateway",
-          details: sanitizeHeaderValue(error?.message || "Source image fetch failed")
+          details: sanitizeHeaderValue(error?.message || "Source image fetch failed"),
         },
-        { "X-Processor": PROCESSOR_NAME }
+        { "X-Processor": PROCESSOR_NAME },
       );
     }
 
     try {
-      const webpBuffer = await processImageImpl(
+      const result = await processImageImpl(
         source.buffer,
         {
           ...params,
-          sourceContentType: source.contentType
+          sourceContentType: source.contentType,
         },
         {
-          logger: requestLogger
-        }
+          logger: requestLogger,
+        },
       );
+
+      const { buffer, metadata } = result;
+      const outputContentType = FORMAT_CONTENT_TYPES[metadata.format] || "application/octet-stream";
 
       requestLogger.info("image.request.success", {
         statusCode: 200,
         sourceBytes: source.buffer.length,
-        outputBytes: webpBuffer.length,
-        outputContentType: "image/webp"
+        outputBytes: buffer.length,
+        outputContentType,
+        metadata,
       });
 
-      return sendBuffer(res, 200, webpBuffer, {
-        "Content-Type": "image/webp",
+      if (params.format === "json") {
+        return sendJson(res, 200, {
+          width: metadata.width,
+          height: metadata.height,
+          format: metadata.format,
+          size: metadata.size,
+          channels: metadata.channels,
+          sourceUrl: params.url,
+          sourceContentType: source.contentType || "",
+          sourceBytes: source.buffer.length,
+        });
+      }
+
+      return sendBuffer(res, 200, buffer, {
+        "Content-Type": outputContentType,
         "Cache-Control": CACHE_CONTROL,
-        "X-Processor": PROCESSOR_NAME
+        "X-Processor": PROCESSOR_NAME,
+        "X-Image-Width": String(metadata.width),
+        "X-Image-Height": String(metadata.height),
+        "X-Image-Format": metadata.format,
+        "X-Image-Size": String(metadata.size),
       });
     } catch (error) {
       requestLogger.warn("image.request.processing_failed_fallback", {
         error,
         sourceBytes: source.buffer.length,
         sourceContentType: source.contentType || "",
-        fallbackContentType: source.contentType || "application/octet-stream"
+        fallbackContentType: source.contentType || "application/octet-stream",
       });
 
       return sendBuffer(res, 200, source.buffer, {
         "Content-Type": source.contentType || "application/octet-stream",
         "Cache-Control": CACHE_CONTROL,
         "X-Processor": PROCESSOR_NAME,
-        "X-Processing-Error": sanitizeHeaderValue(error?.message || "Image processing failed")
+        "X-Processing-Error": sanitizeHeaderValue(error?.message || "Image processing failed"),
       });
     }
   };
@@ -141,7 +162,7 @@ function extractQuery(req) {
 function sendJson(res, statusCode, body, headers = {}) {
   return sendBuffer(res, statusCode, Buffer.from(JSON.stringify(body)), {
     "Content-Type": "application/json; charset=utf-8",
-    ...headers
+    ...headers,
   });
 }
 

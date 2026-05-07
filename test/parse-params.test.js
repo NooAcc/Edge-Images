@@ -25,7 +25,7 @@ test("parseParams clamps dimensions and quality", () => {
     url: "https://example.com/photo.jpg",
     width: "5000",
     height: "2048",
-    quality: "150"
+    quality: "150",
   });
 
   assert.equal(params.width, 1024);
@@ -38,14 +38,14 @@ test("parseParams rejects invalid fit and defaults invalid background", () => {
     () =>
       parseParams({
         url: "https://example.com/photo.jpg",
-        fit: "invalid"
+        fit: "invalid",
       }),
-    /fit must be/
+    /fit must be/,
   );
 
   const params = parseParams({
     url: "https://example.com/photo.jpg",
-    background: "not-a-color"
+    background: "not-a-color",
   });
 
   assert.equal(params.fit, "inside");
@@ -58,7 +58,7 @@ test("parseParams accepts background, rotation, and flip", () => {
     url: "https://example.com/photo.jpg",
     background: "#ff0000",
     rotate: "90",
-    flip: "hv"
+    flip: "hv",
   });
 
   assert.deepEqual(params.background, [255, 0, 0]);
@@ -67,29 +67,42 @@ test("parseParams accepts background, rotation, and flip", () => {
   assert.equal(params.flip, "hv");
 });
 
+test("parseParams accepts supported format values", () => {
+  for (const format of ["webp", "jpeg", "png", "avif", "json"]) {
+    const params = parseParams({
+      url: "https://example.com/photo.jpg",
+      format,
+    });
+    assert.equal(params.format, format);
+  }
+});
+
 test("parseParams rejects unsupported format and invalid transform values", () => {
   assert.throws(
-    () => parseParams({ url: "https://example.com/photo.jpg", format: "png" }),
-    /format must be webp/
+    () => parseParams({ url: "https://example.com/photo.jpg", format: "gif" }),
+    /format must be one of webp, jpeg, png, avif, or json/,
   );
   assert.throws(
     () => parseParams({ url: "https://example.com/photo.jpg", fit: "scale-down" }),
-    /fit must be/
+    /fit must be/,
   );
   assert.throws(
     () => parseParams({ url: "https://example.com/photo.jpg", rotate: "45" }),
-    /rotate must be/
+    /rotate must be/,
   );
   assert.throws(
     () => parseParams({ url: "https://example.com/photo.jpg", flip: "diagonal" }),
-    /flip must be/
+    /flip must be/,
   );
 });
 
 test("parseParams rejects non-http urls and invalid dimensions", () => {
   assert.throws(() => parseParams({ url: "file:///tmp/a.jpg" }), /http or https/);
   assert.throws(() => parseParams({ url: "https://example.com/a.jpg", width: "0" }), /positive/);
-  assert.throws(() => parseParams({ url: "https://example.com/a.jpg", height: "12.5" }), /positive/);
+  assert.throws(
+    () => parseParams({ url: "https://example.com/a.jpg", height: "12.5" }),
+    /positive/,
+  );
 });
 
 test("parseParams enforces configured source URL allowlist", () => {
@@ -98,26 +111,26 @@ test("parseParams enforces configured source URL allowlist", () => {
   assert.equal(
     parseParams(
       { url: "https://images.example.com/photo.jpg" },
-      { urlAllowlist }
+      { urlAllowlist },
     ).url,
-    "https://images.example.com/photo.jpg"
+    "https://images.example.com/photo.jpg",
   );
   assert.equal(
     parseParams(
       { url: "https://assets.trusted-cdn.com/photo.jpg" },
-      { urlAllowlist }
+      { urlAllowlist },
     ).url,
-    "https://assets.trusted-cdn.com/photo.jpg"
+    "https://assets.trusted-cdn.com/photo.jpg",
   );
   assert.equal(
     parseParams(
       { url: "https://trusted-cdn.com/photo.jpg" },
-      { urlAllowlist }
+      { urlAllowlist },
     ).url,
-    "https://trusted-cdn.com/photo.jpg"
+    "https://trusted-cdn.com/photo.jpg",
   );
   assert.throws(
     () => parseParams({ url: "https://evil.example.net/photo.jpg" }, { urlAllowlist }),
-    /not allowed/
+    /not allowed/,
   );
 });
