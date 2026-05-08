@@ -1,15 +1,17 @@
 # Vercel Edge Images
 
-一个运行在 Vercel Node.js Serverless Functions 上的图片处理服务。它会下载远程图片，按参数执行受控的缩放、裁剪、填充等处理，并返回优化后的 WebP 图片。
+一个运行在 Vercel Node.js Serverless Functions 上的图片处理服务。它会下载远程图片，按参数执行受控的缩放、裁剪、填充等处理，并返回优化后的图片（支持 WebP、JPEG、PNG、AVIF）。
 
 本实现遵循 `Vercel Edge Images.md` 中的项目需求：
 
 - `GET /api/image` 接收类似 Cloudflare Images 风格的查询参数。
 - 默认输出 WebP，质量为 `85`。
+- 支持多格式输出：`webp`、`jpeg`、`png`、`avif`。
+- 支持 `format=json` 返回图片元信息。
 - 输出尺寸始终限制在 `1024 x 1024` 以内。
 - 源图片下载超时时间为 20 秒。
 - 图片处理失败时会降级返回已下载的原图。
-- 响应包含适合 CDN 缓存的响应头。
+- 响应包含适合 CDN 缓存的响应头和图片元信息头。
 
 ## 快速开始
 
@@ -117,8 +119,12 @@ https://<your-project>.vercel.app/api/image?url=https%3A%2F%2Fexample.com%2Fphot
 
 ```text
 Content-Type: image/webp
-Cache-Control: public, max-age=86400, s-maxage=604800
+Cache-Control: public, max-age=31536000, immutable
 X-Processor: vercel-node-image
+X-Image-Width: 800
+X-Image-Height: 600
+X-Image-Format: webp
+X-Image-Size: <bytes>
 ```
 
 ## API
@@ -166,8 +172,8 @@ IMAGE_URL_ALLOWLIST=example.com trusted-cdn.com
 | `width`      | 未设置   | 目标宽度，单位为像素。最大值会被限制为 `1024`。                                               |
 | `height`     | 未设置   | 目标高度，单位为像素。最大值会被限制为 `1024`。                                               |
 | `fit`        | `inside` | 使用 sharp 原生模式，支持 `cover`、`contain`、`fill`、`inside`、`outside`。非法值返回 `400`。 |
-| `quality`    | `85`     | WebP 输出质量，范围为 `1` 到 `100`。超出范围的值会被截断。                                    |
-| `format`     | `webp`   | 为未来格式扩展预留。当前版本只接受 `webp`。                                                   |
+| `quality`    | `85`     | 输出质量，范围为 `1` 到 `100`。超出范围的值会被截断。                                          |
+| `format`     | `webp`   | 输出格式，支持 `webp`、`jpeg`、`png`、`avif`、`json`。非法值返回 `400`。                        |
 | `background` | `FFFFFF` | `contain` 模式使用的十六进制 `RRGGBB` 背景色。非法值会回退为白色。                            |
 | `rotate`     | 未设置   | 支持 `90`、`180`、`270`。                                                                     |
 | `flip`       | 未设置   | 支持 `h`、`v`、`hv`。                                                                         |
@@ -198,23 +204,74 @@ IMAGE_URL_ALLOWLIST=example.com trusted-cdn.com
 /api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&rotate=90&flip=h
 ```
 
+输出 JPEG 格式：
+
+```text
+/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&width=800&format=jpeg
+```
+
+输出 PNG 格式：
+
+```text
+/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&width=800&format=png
+```
+
+输出 AVIF 格式：
+
+```text
+/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&width=800&format=avif
+```
+
+获取 JSON 元信息：
+
+```text
+/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&width=800&format=json
+```
+
+JSON 响应示例：
+
+```json
+{
+  "width": 800,
+  "height": 600,
+  "format": "webp",
+  "size": 12345,
+  "channels": 3,
+  "sourceUrl": "https://example.com/photo.jpg",
+  "sourceContentType": "image/jpeg",
+  "sourceBytes": 98765
+}
+```
+
 ## 响应头
 
 成功处理后的图片响应：
 
 ```text
 Content-Type: image/webp
-Cache-Control: public, max-age=86400, s-maxage=604800
+Cache-Control: public, max-age=31536000, immutable
 X-Processor: vercel-node-image
+X-Image-Width: <width>
+X-Image-Height: <height>
+X-Image-Format: <format>
+X-Image-Size: <bytes>
 ```
 
 处理失败后的原图降级响应：
 
 ```text
 Content-Type: <original source content-type>
-Cache-Control: public, max-age=86400, s-maxage=604800
+Cache-Control: public, max-age=31536000, immutable
 X-Processor: vercel-node-image
 X-Processing-Error: <short error message>
+```
+
+JSON 元信息响应：
+
+```text
+Content-Type: application/json; charset=utf-8
+Cache-Control: public, max-age=31536000, immutable
+X-Processor: vercel-node-image
 ```
 
 ## 错误响应
@@ -228,7 +285,7 @@ X-Processing-Error: <short error message>
 
 ## 调试日志
 
-默认不输出详细调试日志。设置 `IMAGE_DEBUG_LOGS=1` 后，服务会向控制台输出以 `[image]` 开头的 JSON 日志，包含请求参数、源图下载状态、请求头、内容类型、字节数、图片处理路径、图片变换计划、WebP 编码结果和原图降级原因。
+默认不输出详细调试日志。设置 `IMAGE_DEBUG_LOGS=1` 后，服务会向控制台输出以 `[image]` 开头的 JSON 日志，包含请求参数、源图下载状态、请求头、内容类型、字节数、图片处理路径、图片变换计划、编码结果和原图降级原因。
 
 本地运行示例：
 
@@ -240,7 +297,17 @@ IMAGE_DEBUG_LOGS=1 npm run vercel:dev
 
 ## 实现说明
 
-`sharp` 用于图片解码、几何变换和质量可控的 WebP 编码。处理流程会读取源图元数据，按参数规划旋转、翻转、缩放、裁剪或填充，然后通过单一 sharp 管线输出 WebP。
+`sharp` 用于图片解码、几何变换和质量可控的多格式编码。处理流程会读取源图元数据，按参数规划旋转、翻转、缩放、裁剪或填充，然后通过单一 sharp 管线输出指定格式。
+
+支持的输出格式及特性：
+
+| 格式   | 质量控制 | 编码速度 | 特点                     |
+| ------ | -------- | -------- | ------------------------ |
+| `webp` | 是       | 快       | 默认格式，高效压缩       |
+| `jpeg` | 是       | 快       | 兼容性好                 |
+| `png`  | 是       | 中       | 支持透明通道             |
+| `avif` | 是       | 较慢     | 最高压缩率，现代浏览器   |
+| `json` | 不适用   | -        | 返回元信息，不返回图片   |
 
 首页和文档页会初始化 Vercel Web Analytics 与 Speed Insights 的客户端队列，并加载对应采集脚本，用于采集页面访问和性能指标。实际数据展示需要在 Vercel 项目控制台中启用对应功能。
 
