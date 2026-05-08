@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>使用文档 - Vercel Edge Images</title>
-    <meta name="description" content="Vercel Edge Images 图片处理 API 使用文档。" />
+    <meta name="description" content="Vercel Edge Images 媒体处理 API 使用文档，支持图片处理和视频封面提取。" />
     <style>
       :root {
         --ink: #1f2933;
@@ -13,6 +13,9 @@
         --page: #f6f8fb;
         --panel: #ffffff;
         --accent: #087f8c;
+        --accent-dark: #065c66;
+        --video: #9b59b6;
+        --video-light: rgba(155, 89, 182, 0.08);
         --code: #18212f;
       }
 
@@ -43,6 +46,9 @@
       header {
         border-bottom: 1px solid var(--line);
         background: #ffffff;
+        position: sticky;
+        top: 0;
+        z-index: 2;
       }
 
       .nav {
@@ -54,7 +60,7 @@
       }
 
       a {
-        color: #065c66;
+        color: var(--accent-dark);
       }
 
       .brand {
@@ -63,13 +69,38 @@
         text-decoration: none;
       }
 
+      .tabs {
+        display: flex;
+        gap: 4px;
+      }
+
+      .tabs a {
+        display: inline-flex;
+        align-items: center;
+        padding: 8px 14px;
+        border-radius: 6px;
+        color: var(--muted);
+        font-size: 14px;
+        text-decoration: none;
+        transition: all 0.2s;
+      }
+
+      .tabs a:hover {
+        background: rgba(0, 0, 0, 0.04);
+      }
+
+      .tabs a.active {
+        background: var(--accent);
+        color: #ffffff;
+      }
+
       main {
         padding: 48px 0 72px;
       }
 
       h1 {
         margin: 0;
-        font-size: clamp(34px, 6vw, 56px);
+        font-size: clamp(32px, 6vw, 52px);
         line-height: 1.08;
         letter-spacing: 0;
       }
@@ -90,11 +121,26 @@
         font-size: 24px;
       }
 
+      h3 {
+        margin: 24px 0 10px;
+        font-size: 18px;
+      }
+
       .panel {
         border: 1px solid var(--line);
         border-radius: 8px;
         background: var(--panel);
         padding: 20px;
+      }
+
+      .panel.video {
+        border-color: var(--video);
+        background: var(--video-light);
+      }
+
+      .section-icon {
+        margin-right: 8px;
+        font-size: 18px;
       }
 
       pre {
@@ -109,6 +155,33 @@
       code {
         font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
         font-size: 14px;
+      }
+
+      .endpoint {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 12px;
+        align-items: center;
+        border-radius: 8px;
+        background: var(--code);
+        color: #e9f1f7;
+        padding: 16px;
+        overflow: hidden;
+      }
+
+      .endpoint code {
+        overflow-wrap: anywhere;
+      }
+
+      .copy {
+        min-width: 80px;
+        min-height: 38px;
+        border: 1px solid rgba(255, 255, 255, 0.28);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.09);
+        color: #ffffff;
+        cursor: pointer;
+        font-weight: 700;
       }
 
       table {
@@ -148,11 +221,34 @@
         font-size: 14px;
       }
 
+      .json-preview {
+        font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+        font-size: 14px;
+        color: #e9f1f7;
+        background: var(--code);
+        border-radius: 8px;
+        padding: 16px;
+        overflow-x: auto;
+        white-space: pre;
+      }
+
       @media (max-width: 720px) {
         .nav {
           align-items: flex-start;
           flex-direction: column;
           padding: 14px 0;
+        }
+
+        .tabs {
+          flex-wrap: wrap;
+        }
+
+        .endpoint {
+          grid-template-columns: 1fr;
+        }
+
+        .copy {
+          width: 100%;
         }
       }
     </style>
@@ -185,32 +281,153 @@
     <header>
       <div class="shell nav">
         <a class="brand" href="/">Vercel Edge Images</a>
-        <a href="/">返回首页</a>
+        <nav class="tabs" aria-label="文档导航">
+          <a href="/">首页</a>
+          <a href="#images" class="active">图片处理</a>
+          <a href="#videos">视频处理</a>
+          <a href="#api">API 参考</a>
+        </nav>
       </div>
     </header>
 
     <main class="shell">
       <h1>使用文档</h1>
       <p class="lead">
-        通过 <code>/api/image</code> 接口传入远程图片 URL 和处理参数，服务会返回经过缩放、
-        裁剪或填充后的 WebP 图片，并自动限制输出尺寸不超过 1024 x 1024。
+        通过 <code>/api/image</code> 接口处理远程图片和视频，支持缩放、裁剪、格式转换和元信息查询。
       </p>
 
-      <section>
-        <h2>快速调用</h2>
-        <pre><code>/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&amp;width=800&amp;height=600&amp;fit=cover</code></pre>
-      </section>
+      <section id="images" aria-labelledby="images-title">
+        <h2 id="images-title"><span class="section-icon">📷</span>图片处理</h2>
 
-      <section>
-        <h2>HTML 示例</h2>
+        <h3>快速调用</h3>
+        <div class="endpoint">
+          <code id="image-example"
+            >/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&amp;width=800&amp;height=600&amp;fit=cover</code
+          >
+          <button class="copy" type="button" data-copy="#image-example">复制</button>
+        </div>
+
+        <h3>HTML 示例</h3>
         <pre><code>&lt;img
   src="/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&amp;width=800&amp;height=600&amp;fit=cover"
-  alt=""
+  alt="示例图片"
 &gt;</code></pre>
+
+        <h3>获取图片元信息</h3>
+        <div class="endpoint">
+          <code id="image-meta"
+            >/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&amp;format=json</code
+          >
+          <button class="copy" type="button" data-copy="#image-meta">复制</button>
+        </div>
+
+        <h3>JSON 返回示例</h3>
+        <div class="json-preview">{
+  "width": 800,
+  "height": 600,
+  "format": "webp",
+  "size": 12345,
+  "channels": 3,
+  "sourceUrl": "https://example.com/photo.jpg",
+  "sourceContentType": "image/jpeg",
+  "sourceBytes": 98765
+}</div>
+
+        <h3>常用场景</h3>
+        <div class="panel">
+          <ul>
+            <li><strong>卡片缩略图</strong>：<code>width=640&amp;height=360&amp;fit=cover</code></li>
+            <li><strong>头像</strong>：<code>width=256&amp;height=256&amp;fit=inside</code></li>
+            <li><strong>商品图</strong>：<code>width=800&amp;height=800&amp;fit=contain&amp;background=FFFFFF</code></li>
+            <li><strong>低带宽预览</strong>：<code>width=480&amp;quality=50</code></li>
+          </ul>
+        </div>
       </section>
 
-      <section>
-        <h2>参数说明</h2>
+      <section id="videos" aria-labelledby="videos-title">
+        <h2 id="videos-title"><span class="section-icon">🎬</span>视频处理</h2>
+
+        <div class="panel video">
+          <p>自动识别 <code>.mp4</code> 和 <code>.webm</code> 文件，提取首帧作为封面图。采用 Range 请求优化，仅下载前 512KB 数据。</p>
+        </div>
+
+        <h3>提取视频封面</h3>
+        <div class="endpoint">
+          <code id="video-cover"
+            >/api/image?url=https%3A%2F%2Fexample.com%2Fclip.mp4&amp;width=800&amp;height=600&amp;fit=cover</code
+          >
+          <button class="copy" type="button" data-copy="#video-cover">复制</button>
+        </div>
+
+        <h3>HTML 示例</h3>
+        <pre><code>&lt;img
+  src="/api/image?url=https%3A%2F%2Fexample.com%2Fclip.mp4&amp;width=800&amp;height=600&amp;fit=cover"
+  alt="视频封面"
+&gt;</code></pre>
+
+        <h3>获取视频元信息</h3>
+        <div class="endpoint">
+          <code id="video-meta"
+            >/api/image?url=https%3A%2F%2Fexample.com%2Fclip.mp4&amp;format=json</code
+          >
+          <button class="copy" type="button" data-copy="#video-meta">复制</button>
+        </div>
+
+        <h3>JSON 返回示例</h3>
+        <div class="json-preview">{
+  "width": 1920,
+  "height": 1080,
+  "codec": "h264",
+  "duration": 10.5,
+  "format": "mov,mp4,m4a,3gp,3g2,mj2",
+  "sourceUrl": "https://example.com/clip.mp4",
+  "bytesDownloaded": 524288
+}</div>
+
+        <h3>视频元信息字段说明</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>字段</th>
+              <th>说明</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>width</code></td>
+              <td>视频宽度（像素）</td>
+            </tr>
+            <tr>
+              <td><code>height</code></td>
+              <td>视频高度（像素）</td>
+            </tr>
+            <tr>
+              <td><code>codec</code></td>
+              <td>视频编码格式（如 h264、vp9）</td>
+            </tr>
+            <tr>
+              <td><code>duration</code></td>
+              <td>视频时长（秒）</td>
+            </tr>
+            <tr>
+              <td><code>format</code></td>
+              <td>容器格式</td>
+            </tr>
+            <tr>
+              <td><code>bytesDownloaded</code></td>
+              <td>下载的字节数（Range 请求优化）</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="api" aria-labelledby="api-title">
+        <h2 id="api-title"><span class="section-icon">⚙️</span>API 参考</h2>
+
+        <h3>接口地址</h3>
+        <pre><code>GET /api/image</code></pre>
+
+        <h3>必需参数</h3>
         <table>
           <thead>
             <tr>
@@ -222,31 +439,48 @@
           <tbody>
             <tr>
               <td><code>url</code></td>
-              <td>必填，完整 HTTP 或 HTTPS 图片地址，需要 URL 编码。</td>
+              <td>必填，完整 HTTP 或 HTTPS 媒体地址，需要 URL 编码。</td>
               <td>无</td>
             </tr>
+          </tbody>
+        </table>
+
+        <h3>可选参数</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>参数</th>
+              <th>说明</th>
+              <th>默认值</th>
+            </tr>
+          </thead>
+          <tbody>
             <tr>
               <td><code>width</code></td>
               <td>目标宽度，最大 1024。仅传宽度时，高度按比例推断。</td>
-              <td>按源图推断</td>
+              <td>按源媒体推断</td>
             </tr>
             <tr>
               <td><code>height</code></td>
               <td>目标高度，最大 1024。仅传高度时，宽度按比例推断。</td>
-              <td>按源图推断</td>
+              <td>按源媒体推断</td>
             </tr>
             <tr>
               <td><code>fit</code></td>
               <td>
-                <code>inside</code
-                >、<code>cover</code>、<code>contain</code>、<code>fill</code>、<code>outside</code>。
+                <code>inside</code>、<code>cover</code>、<code>contain</code>、<code>fill</code>、<code>outside</code>。
               </td>
               <td><code>inside</code></td>
             </tr>
             <tr>
               <td><code>quality</code></td>
-              <td>WebP 输出质量，范围 1 到 100。</td>
+              <td>输出质量，范围 1 到 100。</td>
               <td><code>85</code></td>
+            </tr>
+            <tr>
+              <td><code>format</code></td>
+              <td>输出格式：<code>webp</code>、<code>jpeg</code>、<code>png</code>、<code>avif</code>、<code>json</code>。</td>
+              <td><code>webp</code></td>
             </tr>
             <tr>
               <td><code>background</code></td>
@@ -265,56 +499,70 @@
             </tr>
           </tbody>
         </table>
-      </section>
 
-      <section>
-        <h2>常用场景</h2>
+        <h3>源媒体域名白名单</h3>
         <div class="panel">
-          <ul>
-            <li>卡片缩略图：<code>width=640&amp;height=360&amp;fit=cover</code></li>
-            <li>头像：<code>width=256&amp;height=256&amp;fit=inside</code></li>
-            <li>
-              商品图：<code>width=800&amp;height=800&amp;fit=contain&amp;background=FFFFFF</code>
-            </li>
-            <li>低带宽预览：<code>width=480&amp;quality=50</code></li>
-          </ul>
-        </div>
-      </section>
-
-      <section>
-        <h2>源图域名白名单</h2>
-        <div class="panel">
-          <p>
-            生产环境建议配置 <code>IMAGE_URL_ALLOWLIST</code>，限制接口只能下载可信域名下的图片。
-          </p>
+          <p>生产环境建议配置 <code>IMAGE_URL_ALLOWLIST</code>，限制接口只能下载可信域名下的媒体。</p>
           <pre><code>IMAGE_URL_ALLOWLIST=example.com,trusted-cdn.com</code></pre>
-          <p>
-            每个条目只需要写域名。配置 <code>example.com</code> 后，<code>example.com</code> 和
-            <code>*.example.com</code> 都会通过白名单。
-          </p>
+          <p>配置规则：</p>
           <ul>
             <li><code>example.com</code>：允许根域名和所有子域名。</li>
-            <li><code>trusted-cdn.com</code>：允许该域名及其所有子域名。</li>
             <li><code>*</code>：允许所有域名，仅建议本地开发使用。</li>
           </ul>
-          <p>未配置该变量时，白名单不启用，以保持原有开放图片代理行为。</p>
         </div>
-      </section>
 
-      <section>
-        <h2>响应与错误</h2>
-        <div class="panel">
-          <p>成功处理后返回 <code>Content-Type: image/webp</code>。</p>
-          <p>
-            参数错误返回 400，源图下载失败返回 502。源图已下载但处理失败时，接口会透传原图，并添加
-            <code>X-Processing-Error</code> 响应头。
-          </p>
-        </div>
+        <h3>响应状态码</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>状态码</th>
+              <th>说明</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>200</code></td>
+              <td>成功处理或降级返回原媒体。</td>
+            </tr>
+            <tr>
+              <td><code>400</code></td>
+              <td>请求参数缺失或非法，或源域名不在白名单。</td>
+            </tr>
+            <tr>
+              <td><code>405</code></td>
+              <td>请求方法不是 <code>GET</code>。</td>
+            </tr>
+            <tr>
+              <td><code>502</code></td>
+              <td>源媒体无法下载、超时或处理失败。</td>
+            </tr>
+          </tbody>
+        </table>
       </section>
     </main>
 
     <footer>
-      <div class="shell">缓存策略：浏览器 1 天，Vercel CDN 7 天。</div>
+      <div class="shell">缓存策略：浏览器 1 天，Vercel CDN 7 天。支持 sharp 图片处理和 ffmpeg 视频处理。</div>
     </footer>
+
+    <script>
+      document.querySelectorAll('[data-copy]').forEach((button) => {
+        button.addEventListener('click', async () => {
+          const target = document.querySelector(button.dataset.copy);
+          if (!target) return;
+          await navigator.clipboard.writeText(target.textContent.trim());
+          const oldText = button.textContent;
+          button.textContent = '已复制';
+          window.setTimeout(() => { button.textContent = oldText; }, 1200);
+        });
+      });
+
+      document.querySelectorAll('.tabs a').forEach((tab) => {
+        tab.addEventListener('click', (e) => {
+          document.querySelectorAll('.tabs a').forEach((a) => a.classList.remove('active'));
+          tab.classList.add('active');
+        });
+      });
+    </script>
   </body>
 </html>

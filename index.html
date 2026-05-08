@@ -6,11 +6,10 @@
     <title>Vercel Edge Images</title>
     <meta
       name="description"
-      content="基于 Vercel Node.js Serverless Functions 和 sharp 的动态图片和视频处理服务，支持多格式输出、视频封面提取和元信息查询。"
+      content="基于 Vercel Node.js Serverless Functions 的动态媒体处理服务，支持图片处理和视频封面提取。"
     />
     <style>
       :root {
-        color-scheme: light;
         --ink: #1f2933;
         --muted: #52616f;
         --line: #d8e0e8;
@@ -19,8 +18,6 @@
         --accent: #087f8c;
         --accent-dark: #065c66;
         --code: #18212f;
-        --warn: #9a3412;
-        --video: #9b59b6;
       }
 
       * {
@@ -119,15 +116,15 @@
 
       h1 {
         margin: 0;
-        max-width: 760px;
-        font-size: clamp(36px, 6vw, 64px);
-        line-height: 1.04;
+        max-width: 680px;
+        font-size: clamp(32px, 6vw, 56px);
+        line-height: 1.08;
         letter-spacing: 0;
       }
 
       .lead {
-        max-width: 680px;
-        margin: 22px 0 0;
+        max-width: 580px;
+        margin: 20px 0 0;
         color: var(--muted);
         font-size: 18px;
       }
@@ -136,7 +133,7 @@
         display: flex;
         flex-wrap: wrap;
         gap: 12px;
-        margin-top: 28px;
+        margin-top: 24px;
       }
 
       .button {
@@ -163,99 +160,64 @@
         border-radius: 8px;
         background: var(--panel);
         overflow: hidden;
-        box-shadow: 0 18px 45px rgba(31, 41, 51, 0.11);
+        box-shadow: 0 12px 32px rgba(31, 41, 51, 0.08);
       }
 
       .preview-media {
-        position: relative;
-        aspect-ratio: 4 / 3;
+        aspect-ratio: 16 / 9;
         background:
-          linear-gradient(135deg, rgba(8, 127, 140, 0.16), rgba(240, 99, 56, 0.12)),
-          repeating-conic-gradient(#dce6ee 0% 25%, #ffffff 0% 50%) 50% / 28px 28px;
+          linear-gradient(135deg, rgba(8, 127, 140, 0.12), rgba(240, 99, 56, 0.08)),
+          repeating-conic-gradient(#dce6ee 0% 25%, #ffffff 0% 50%) 50% / 24px 24px;
+        display: grid;
+        place-items: center;
       }
 
       .preview-media::before {
-        content: '';
-        position: absolute;
-        inset: 38px;
-        border-radius: 8px;
-        background:
-          radial-gradient(circle at 70% 30%, #ffd166 0 11%, transparent 12%),
-          linear-gradient(145deg, transparent 0 48%, #2a9d8f 49% 64%, transparent 65%),
-          linear-gradient(35deg, #264653 0 42%, #e76f51 43% 68%, #f4a261 69%);
-        box-shadow: 0 10px 28px rgba(31, 41, 51, 0.2);
+        content: '📷';
+        font-size: 48px;
       }
 
       .preview-bar {
-        display: grid;
-        gap: 8px;
-        padding: 16px;
-      }
-
-      .meter {
-        height: 8px;
-        border-radius: 999px;
-        background: #d9e7eb;
-        overflow: hidden;
-      }
-
-      .meter span {
-        display: block;
-        width: 72%;
-        height: 100%;
-        background: var(--accent);
-      }
-
-      .preview-caption {
-        display: flex;
-        justify-content: space-between;
-        gap: 16px;
-        color: var(--muted);
+        padding: 14px 16px;
+        border-top: 1px solid var(--line);
+        background: #fafbfc;
         font-size: 13px;
+        color: var(--muted);
+        text-align: center;
       }
 
       section {
-        margin-top: 56px;
+        margin-top: 52px;
       }
 
       h2 {
-        margin: 0 0 18px;
-        font-size: 26px;
+        margin: 0 0 16px;
+        font-size: 24px;
         line-height: 1.2;
-        letter-spacing: 0;
       }
 
       .grid {
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 16px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
       }
 
       .card {
-        min-height: 156px;
         border: 1px solid var(--line);
         border-radius: 8px;
         background: var(--panel);
         padding: 20px;
       }
 
-      .card.video {
-        border-color: var(--video);
-        background: linear-gradient(135deg, rgba(155, 89, 182, 0.05), transparent);
-      }
-
       .card h3 {
         margin: 0 0 8px;
-        font-size: 17px;
-      }
-
-      .card.video h3 {
-        color: var(--video);
+        font-size: 16px;
       }
 
       .card p {
         margin: 0;
         color: var(--muted);
+        font-size: 14px;
       }
 
       .endpoint {
@@ -291,58 +253,15 @@
         font-weight: 700;
       }
 
-      .params {
-        width: 100%;
-        border-collapse: collapse;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: var(--panel);
-        overflow: hidden;
-      }
-
-      .params th,
-      .params td {
-        padding: 12px 14px;
-        border-bottom: 1px solid var(--line);
-        text-align: left;
-        vertical-align: top;
-      }
-
-      .params th {
-        background: #eef4f7;
-        font-size: 14px;
-      }
-
-      .params tr:last-child td {
-        border-bottom: 0;
-      }
-
-      .note {
-        border-left: 4px solid var(--warn);
-        background: #fff7ed;
-        padding: 14px 16px;
-        color: #5f2a10;
-      }
-
-      .video-badge {
-        display: inline-block;
-        margin-left: 8px;
-        padding: 2px 6px;
-        border-radius: 4px;
-        background: rgba(155, 89, 182, 0.1);
-        color: var(--video);
-        font-size: 12px;
-        font-weight: 700;
-      }
-
       footer {
         border-top: 1px solid var(--line);
         padding: 24px 0;
         color: var(--muted);
         font-size: 14px;
+        text-align: center;
       }
 
-      @media (max-width: 820px) {
+      @media (max-width: 768px) {
         .nav {
           align-items: flex-start;
           flex-direction: column;
@@ -409,7 +328,7 @@
         <nav aria-label="页面导航">
           <a href="#features">功能</a>
           <a href="#usage">调用方式</a>
-          <a href="#params">参数</a>
+          <a href="/docs/">文档</a>
           <a href="/api/image">API</a>
         </nav>
       </div>
@@ -418,27 +337,20 @@
     <main class="shell">
       <section class="hero" aria-labelledby="page-title">
         <div>
-          <p class="eyebrow">Vercel Node.js 媒体处理服务</p>
-          <h1 id="page-title">图片处理 + 视频封面提取</h1>
+          <p class="eyebrow">Vercel Node.js Serverless</p>
+          <h1 id="page-title">动态媒体处理服务</h1>
           <p class="lead">
-            这个程序接收第三方图片或视频 URL，根据查询参数完成缩放、裁剪、填充、旋转和翻转，
-            支持输出 WebP、JPEG、PNG、AVIF 格式，也可通过 <code>format=json</code> 获取图片或视频元信息。
+            传入远程图片或视频 URL，自动完成缩放、裁剪、格式转换，输出优化后的 WebP/JPEG/PNG/AVIF。
           </p>
           <div class="actions">
-            <a class="button" href="#usage">查看调用示例</a>
+            <a class="button" href="#usage">开始使用</a>
             <a class="button secondary" href="/docs/">查看文档</a>
           </div>
         </div>
 
         <div class="preview" aria-label="媒体处理预览示意">
           <div class="preview-media"></div>
-          <div class="preview-bar">
-            <div class="meter" aria-hidden="true"><span></span></div>
-            <div class="preview-caption">
-              <span>WebP/JPEG/PNG/AVIF</span>
-              <span>MP4/WebM 视频封面</span>
-            </div>
-          </div>
+          <div class="preview-bar">WebP / JPEG / PNG / AVIF</div>
         </div>
       </section>
 
@@ -446,150 +358,40 @@
         <h2 id="features-title">核心功能</h2>
         <div class="grid">
           <article class="card">
-            <h3>远程图片代理</h3>
-            <p>通过 <code>url</code> 参数下载源图，下载超时和错误会返回明确的 HTTP 状态。</p>
+            <h3>图片处理</h3>
+            <p>支持缩放、裁剪、旋转、翻转，输出多种格式</p>
           </article>
           <article class="card">
-            <h3>尺寸与裁剪</h3>
-            <p>
-              支持 sharp 原生 <code>inside</code>、<code>cover</code>、<code>contain</code>、<code
-                >fill</code
-              >
-              和 <code>outside</code>。
-            </p>
-          </article>
-          <article class="card">
-            <h3>多格式输出</h3>
-            <p>支持 WebP、JPEG、PNG、AVIF 四种格式，可通过 <code>format</code> 参数选择。</p>
+            <h3>视频封面</h3>
+            <p>自动提取 MP4/WebM 视频首帧作为封面图</p>
           </article>
           <article class="card">
             <h3>元信息查询</h3>
-            <p>设置 <code>format=json</code> 返回图片或视频元信息，包含宽高、格式、大小等数据。</p>
+            <p>获取图片或视频的分辨率、大小等详细信息</p>
           </article>
           <article class="card">
             <h3>安全控制</h3>
-            <p>可用 <code>IMAGE_URL_ALLOWLIST</code> 限制源媒体域名，宽高和源媒体大小也有上限。</p>
-          </article>
-          <article class="card video">
-            <h3>视频封面提取</h3>
-            <p>自动检测 MP4/WebM 视频，提取首帧作为封面图，支持 Range 请求优化下载。</p>
+            <p>支持源媒体域名白名单，防止滥用</p>
           </article>
         </div>
       </section>
 
       <section id="usage" aria-labelledby="usage-title">
-        <h2 id="usage-title">调用方式</h2>
-
+        <h2 id="usage-title">快速调用</h2>
         <div class="endpoint">
-          <code id="example-image"
-            >/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&amp;width=800&amp;height=600&amp;fit=cover</code
+          <code id="example-url"
+            >/api/image?url=https%3A%2F%2Fexample.com%2Fmedia.jpg&amp;width=800&amp;height=600&amp;fit=cover</code
           >
-          <button class="copy" type="button" data-copy="#example-image">复制</button>
+          <button class="copy" type="button" data-copy="#example-url">复制</button>
         </div>
-        <p>
-          在页面中直接把这个地址放进 <code>&lt;img&gt;</code> 的 <code>src</code> 即可。
-          源媒体地址需要先用 <code>encodeURIComponent</code> 编码。
+        <p style="margin-top: 14px; color: var(--muted);">
+          源地址需要 URL 编码，直接放入 <code>&lt;img&gt;</code> 的 <code>src</code> 属性即可使用。
         </p>
-
-        <div class="endpoint" style="margin-top: 16px;">
-          <code id="example-video"
-            >/api/image?url=https%3A%2F%2Fexample.com%2Fclip.mp4&amp;width=800&amp;format=webp</code
-          >
-          <button class="copy" type="button" data-copy="#example-video">复制</button>
-        </div>
-        <p>视频封面提取：自动检测 <code>.mp4</code> 或 <code>.webm</code> 文件，提取首帧作为封面。</p>
-      </section>
-
-      <section id="params" aria-labelledby="params-title">
-        <h2 id="params-title">常用参数</h2>
-        <table class="params">
-          <thead>
-            <tr>
-              <th>参数</th>
-              <th>说明</th>
-              <th>默认值</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><code>url</code></td>
-              <td>必填，远程图片或视频的完整 HTTP 或 HTTPS 地址。</td>
-              <td>无</td>
-            </tr>
-            <tr>
-              <td><code>width</code> / <code>height</code></td>
-              <td>目标宽高，最大值会被限制为 1024。</td>
-              <td>按源媒体比例推断</td>
-            </tr>
-            <tr>
-              <td><code>fit</code></td>
-              <td>
-                sharp 原生缩放模式，支持
-                <code>inside</code
-                >、<code>cover</code>、<code>contain</code>、<code>fill</code>、<code>outside</code>。
-              </td>
-              <td><code>inside</code></td>
-            </tr>
-            <tr>
-              <td><code>quality</code></td>
-              <td>输出质量，范围 1 到 100。</td>
-              <td><code>85</code></td>
-            </tr>
-            <tr>
-              <td><code>format</code></td>
-              <td>输出格式，支持 <code>webp</code>、<code>jpeg</code>、<code>png</code>、<code>avif</code>、<code>json</code>。</td>
-              <td><code>webp</code></td>
-            </tr>
-            <tr>
-              <td><code>background</code></td>
-              <td><code>contain</code> 的填充背景色，格式为 RRGGBB。</td>
-              <td><code>FFFFFF</code></td>
-            </tr>
-            <tr>
-              <td><code>rotate</code> / <code>flip</code></td>
-              <td>旋转支持 90、180、270；翻转支持 h、v、hv。</td>
-              <td>不旋转、不翻转</td>
-            </tr>
-          </tbody>
-        </table>
-      </section>
-
-      <section aria-label="视频功能说明">
-        <h2>视频处理 <span class="video-badge">新增</span></h2>
-        <div class="grid">
-          <article class="card video">
-            <h3>视频封面提取</h3>
-            <p>
-              自动识别 <code>.mp4</code> 和 <code>.webm</code> 文件，使用 ffmpeg 提取首帧作为封面图。
-              <br><code>/api/image?url=video.mp4&amp;width=800</code>
-            </p>
-          </article>
-          <article class="card video">
-            <h3>视频元数据查询</h3>
-            <p>
-              设置 <code>format=json</code> 获取视频分辨率、编码格式、时长等信息。
-              <br><code>/api/image?url=video.mp4&amp;format=json</code>
-            </p>
-          </article>
-          <article class="card video">
-            <h3>Range 请求优化</h3>
-            <p>
-              视频处理仅下载前 512KB 数据即可提取首帧或获取元数据，大幅节省带宽和时间。
-            </p>
-          </article>
-        </div>
-      </section>
-
-      <section aria-label="运行提示">
-        <div class="note">
-          本首页只负责说明程序功能；实际媒体处理接口是 <code>/api/image</code>。 部署到 Vercel
-          后，根路径显示该说明页，接口路径继续按查询参数返回图片、视频封面或 JSON 元信息。
-        </div>
       </section>
     </main>
 
     <footer>
-      <div class="shell">Powered by Vercel Serverless Functions, sharp multi-format image encoding, and ffmpeg video processing.</div>
+      <div class="shell">Powered by Vercel Serverless Functions and sharp</div>
     </footer>
 
     <script>
@@ -597,13 +399,10 @@
         button.addEventListener('click', async () => {
           const target = document.querySelector(button.dataset.copy);
           if (!target) return;
-
           await navigator.clipboard.writeText(target.textContent.trim());
           const oldText = button.textContent;
           button.textContent = '已复制';
-          window.setTimeout(() => {
-            button.textContent = oldText;
-          }, 1200);
+          window.setTimeout(() => { button.textContent = oldText; }, 1200);
         });
       });
     </script>
