@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { createImageLogger } from '../lib/image-logger.js';
-import { buildResizeOptions, processImage } from '../lib/process-image.js';
+import {
+  buildResizeOptions,
+  probeImageMetadataFromUrl,
+  processImage,
+} from '../lib/process-image.js';
 import { createFakeSharp, decodeOutput, makeImageBytes } from './helpers/fake-sharp.js';
 import { createCaptureSink } from './helpers/capture-logs.js';
 
@@ -295,28 +299,33 @@ test('processImage encodes to avif format', async () => {
   assert.equal(decoded.formatOptions.effort, 0);
 });
 
-test('processImage with format=json still processes and returns metadata', async () => {
-  const { buffer, metadata } = await processImage(
-    makeImageBytes(800, 600),
-    {
-      width: 400,
-      fit: 'inside',
-      quality: 85,
-      background: [255, 255, 255],
-      flip: '',
-      format: 'json',
-    },
-    {
-      sharp: createFakeSharp(),
-    },
-  );
+test('probeImageMetadataFromUrl returns source metadata from the image prefix', async () => {
+  let requestOptions;
+  const imageBytes = makeImageBytes(800, 600, { format: 'png' });
 
-  assert.equal(metadata.format, 'webp');
-  assert.equal(metadata.width, 400);
-  assert.equal(metadata.height, 300);
-  assert.equal(metadata.channels, 3);
-  assert.ok(metadata.size > 0);
-  assert.ok(Buffer.isBuffer(buffer));
+  const metadata = await probeImageMetadataFromUrl('https://example.com/photo.png', {
+    sharp: createFakeSharp(),
+    fetchImpl: async (_url, options) => {
+      requestOptions = options;
+      return fakeStreamResponse({
+        status: 206,
+        ok: true,
+        body: createStreamBody([imageBytes]),
+        headers: {
+          'content-type': 'image/png',
+          'content-length': '5120',
+        },
+      });
+    },
+  });
+
+  assert.equal(requestOptions.headers.Range, 'bytes=0-5119');
+  assert.equal(metadata.width, 800);
+  assert.equal(metadata.height, 600);
+  assert.equal(metadata.format, 'png');
+  assert.equal(metadata.channels, undefined);
+  assert.equal(metadata.sourceContentType, 'image/png');
+  assert.equal(metadata.bytesDownloaded, imageBytes.length);
 });
 
 test('processImage returns metadata with width, height, format, size, and channels', async () => {
@@ -341,3 +350,37 @@ test('processImage returns metadata with width, height, format, size, and channe
   assert.equal(typeof metadata.size, 'number');
   assert.equal(typeof metadata.channels, 'number');
 });
+
+function fakeStreamResponse({ status = 200, ok = true, body, headers = {} } = {}) {
+  return {
+    status,
+    ok,
+    headers: {
+      get(name) {
+        return headers[name.toLowerCase()];
+      },
+    },
+    body,
+  };
+}
+
+function createStreamBody(chunks) {
+  let index = 0;
+  return {
+    getReader() {
+      return {
+        async read() {
+          if (index >= chunks.length) {
+            return { done: true };
+          }
+
+          const value = chunks[index];
+          index++;
+          return { done: false, value };
+        },
+        async cancel() {},
+        releaseLock() {},
+      };
+    },
+  };
+}

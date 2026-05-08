@@ -200,21 +200,28 @@ test('api handler returns jpeg content type for format=jpeg', async () => {
 });
 
 test('api handler returns json metadata for format=json', async () => {
+  let fetchImageCalled = false;
+  let processImageCalled = false;
   const handler = createImageHandler({
-    fetchImageImpl: async () => ({
-      buffer: Buffer.from('source-image-bytes'),
-      contentType: 'image/jpeg',
-    }),
-    processImageImpl: async (_buffer, _params) => ({
-      buffer: Buffer.from('processed'),
-      metadata: {
+    fetchImageImpl: async () => {
+      fetchImageCalled = true;
+      throw new Error('fetchImage should not be called for image metadata');
+    },
+    processImageImpl: async () => {
+      processImageCalled = true;
+      throw new Error('processImage should not be called for image metadata');
+    },
+    probeImageMetadataFromUrlImpl: async (url) => {
+      assert.equal(url, 'https://example.com/photo.jpg');
+      return {
         width: 800,
         height: 600,
-        format: 'webp',
-        size: 12345,
+        format: 'jpeg',
         channels: 3,
-      },
-    }),
+        sourceContentType: 'image/jpeg',
+        bytesDownloaded: 5120,
+      };
+    },
   });
   const res = createMockResponse();
 
@@ -237,11 +244,15 @@ test('api handler returns json metadata for format=json', async () => {
   const body = JSON.parse(res.body.toString());
   assert.equal(body.width, 800);
   assert.equal(body.height, 600);
-  assert.equal(body.format, 'webp');
-  assert.equal(body.size, 12345);
+  assert.equal(body.format, 'jpeg');
   assert.equal(body.channels, 3);
   assert.equal(body.sourceUrl, 'https://example.com/photo.jpg');
-  assert.equal(body.sourceBytes, 'source-image-bytes'.length);
+  assert.equal(body.sourceContentType, 'image/jpeg');
+  assert.equal(body.bytesDownloaded, 5120);
+  assert.equal(body.size, undefined);
+  assert.equal(body.sourceBytes, undefined);
+  assert.equal(fetchImageCalled, false);
+  assert.equal(processImageCalled, false);
 });
 
 test('api handler returns png content type for format=png', async () => {

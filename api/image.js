@@ -1,7 +1,11 @@
 import { fetchImage } from '../lib/fetch-image.js';
 import { createImageLogger } from '../lib/image-logger.js';
 import { ParamError, parseParams } from '../lib/parse-params.js';
-import { FORMAT_CONTENT_TYPES, processImage } from '../lib/process-image.js';
+import {
+  FORMAT_CONTENT_TYPES,
+  probeImageMetadataFromUrl,
+  processImage,
+} from '../lib/process-image.js';
 import { extractVideoFrameRange, probeVideoMetadataFromUrl } from '../lib/process-video.js';
 
 export const CACHE_CONTROL = 'public, max-age=31536000, immutable';
@@ -11,6 +15,7 @@ const VIDEO_EXTENSIONS = /\.(mp4|webm)(\?.*)?$/i;
 export function createImageHandler({
   fetchImageImpl = fetchImage,
   processImageImpl = processImage,
+  probeImageMetadataFromUrlImpl = probeImageMetadataFromUrl,
   probeVideoMetadataFromUrlImpl = probeVideoMetadataFromUrl,
   extractVideoFrameRangeImpl = extractVideoFrameRange,
   logger = console,
@@ -107,6 +112,45 @@ export function createImageHandler({
       }
     }
 
+    if (!isVideo && params.format === 'json') {
+      try {
+        const imageMetadata = await probeImageMetadataFromUrlImpl(params.url, {
+          logger: requestLogger,
+        });
+
+        requestLogger.info('image.request.success', {
+          statusCode: 200,
+          imageMetadata,
+        });
+
+        return sendJson(res, 200, {
+          width: imageMetadata.width,
+          height: imageMetadata.height,
+          format: imageMetadata.format,
+          channels: imageMetadata.channels,
+          sourceUrl: params.url,
+          sourceContentType: imageMetadata.sourceContentType,
+          bytesDownloaded: imageMetadata.bytesDownloaded,
+        });
+      } catch (error) {
+        requestLogger.warn('image.request.image_probe_failed', {
+          error,
+          sourceUrl: params.url,
+          sourceHost: getUrlHost(params.url),
+        });
+
+        return sendJson(
+          res,
+          502,
+          {
+            error: 'Bad Gateway',
+            details: sanitizeHeaderValue(error?.message || 'Image metadata probe failed'),
+          },
+          { 'X-Processor': PROCESSOR_NAME },
+        );
+      }
+    }
+
     let imageBuffer;
     let sourceBytes;
     let sourceContentType;
@@ -186,18 +230,6 @@ export function createImageHandler({
         outputContentType,
         metadata,
       });
-
-      if (params.format === 'json') {
-        return sendJson(res, 200, {
-          width: metadata.width,
-          height: metadata.height,
-          format: metadata.format,
-          size: metadata.size,
-          channels: metadata.channels,
-          sourceUrl: params.url,
-          sourceBytes,
-        });
-      }
 
       return sendBuffer(res, 200, buffer, {
         'Content-Type': outputContentType,

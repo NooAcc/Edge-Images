@@ -7,7 +7,7 @@
 - `GET /api/image` 接收类似 Cloudflare Images 风格的查询参数。
 - 默认输出 WebP，质量为 `85`。
 - 支持多格式输出：`webp`、`jpeg`、`png`、`avif`。
-- 支持 `format=json` 返回图片或视频元信息。
+- 支持 `format=json` 返回图片或视频元信息，图片元信息只读取源文件前 5KB。
 - 输出尺寸始终限制在 `1024 x 1024` 以内。
 - 源媒体下载超时时间为 20 秒。
 - 图片处理失败时会降级返回已下载的原图。
@@ -153,8 +153,8 @@ GET /api/image
 
 必需查询参数：
 
-| 参数  | 说明                                                                  |
-| ----- | --------------------------------------------------------------------- |
+| 参数  | 说明                                                                        |
+| ----- | --------------------------------------------------------------------------- |
 | `url` | 绝对 `http` 或 `https` 图片或视频地址。需要使用 `encodeURIComponent` 编码。 |
 
 ## 源媒体域名白名单
@@ -188,8 +188,8 @@ IMAGE_URL_ALLOWLIST=example.com trusted-cdn.com
 | `width`      | 未设置   | 目标宽度，单位为像素。最大值会被限制为 `1024`。                                               |
 | `height`     | 未设置   | 目标高度，单位为像素。最大值会被限制为 `1024`。                                               |
 | `fit`        | `inside` | 使用 sharp 原生模式，支持 `cover`、`contain`、`fill`、`inside`、`outside`。非法值返回 `400`。 |
-| `quality`    | `85`     | 输出质量，范围为 `1` 到 `100`。超出范围的值会被截断。                                          |
-| `format`     | `webp`   | 输出格式，支持 `webp`、`jpeg`、`png`、`avif`、`json`。非法值返回 `400`。                        |
+| `quality`    | `85`     | 输出质量，范围为 `1` 到 `100`。超出范围的值会被截断。                                         |
+| `format`     | `webp`   | 输出格式，支持 `webp`、`jpeg`、`png`、`avif`、`json`。非法值返回 `400`。                      |
 | `background` | `FFFFFF` | `contain` 模式使用的十六进制 `RRGGBB` 背景色。非法值会回退为白色。                            |
 | `rotate`     | 未设置   | 支持 `90`、`180`、`270`。                                                                     |
 | `flip`       | 未设置   | 支持 `h`、`v`、`hv`。                                                                         |
@@ -262,18 +262,19 @@ IMAGE_URL_ALLOWLIST=example.com trusted-cdn.com
 /api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&format=json
 ```
 
+图片元信息查询采用 Range 请求优化，只读取源图前 5KB 并解析源图元数据，不执行缩放或格式转换。
+
 图片 JSON 响应示例：
 
 ```json
 {
   "width": 800,
   "height": 600,
-  "format": "webp",
-  "size": 12345,
+  "format": "jpeg",
   "channels": 3,
   "sourceUrl": "https://example.com/photo.jpg",
   "sourceContentType": "image/jpeg",
-  "sourceBytes": 98765
+  "bytesDownloaded": 5120
 }
 ```
 
@@ -351,19 +352,19 @@ IMAGE_DEBUG_LOGS=1 npm run vercel:dev
 
 ## 实现说明
 
-`sharp` 用于图片解码、几何变换和质量可控的多格式编码。处理流程会读取源图元数据，按参数规划旋转、翻转、缩放、裁剪或填充，然后通过单一 sharp 管线输出指定格式。
+`sharp` 用于图片解码、几何变换和质量可控的多格式编码。普通图片处理会通过单一 sharp 管线输出指定格式；图片元信息查询会通过 Range 请求读取前 5KB 并仅执行 `metadata()`。
 
 `ffmpeg` 用于视频帧提取和元数据探测。视频处理采用 Range 请求优化，仅下载前 512KB 即可提取首帧或获取元数据，无需完整下载视频文件。
 
 支持的输出格式及特性：
 
-| 格式   | 质量控制 | 编码速度 | 特点                     |
-| ------ | -------- | -------- | ------------------------ |
-| `webp` | 是       | 快       | 默认格式，高效压缩       |
-| `jpeg` | 是       | 快       | 兼容性好                 |
-| `png`  | 是       | 中       | 支持透明通道             |
-| `avif` | 是       | 较慢     | 最高压缩率，现代浏览器   |
-| `json` | 不适用   | -        | 返回元信息，不返回媒体   |
+| 格式   | 质量控制 | 编码速度 | 特点                   |
+| ------ | -------- | -------- | ---------------------- |
+| `webp` | 是       | 快       | 默认格式，高效压缩     |
+| `jpeg` | 是       | 快       | 兼容性好               |
+| `png`  | 是       | 中       | 支持透明通道           |
+| `avif` | 是       | 较慢     | 最高压缩率，现代浏览器 |
+| `json` | 不适用   | -        | 返回元信息，不返回媒体 |
 
 首页和文档页会初始化 Vercel Web Analytics 与 Speed Insights 的客户端队列，并加载对应采集脚本，用于采集页面访问和性能指标。实际数据展示需要在 Vercel 项目控制台中启用对应功能。
 

@@ -4,7 +4,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>使用文档 - Vercel Edge Images</title>
-    <meta name="description" content="Vercel Edge Images 媒体处理 API 使用文档，支持图片处理和视频封面提取。" />
+    <meta
+      name="description"
+      content="Vercel Edge Images 媒体处理 API 使用文档，支持图片处理和视频封面提取。"
+    />
     <style>
       :root {
         --ink: #1f2933;
@@ -314,6 +317,7 @@
 &gt;</code></pre>
 
         <h3>获取图片元信息</h3>
+        <p>图片元信息查询只读取源图前 5KB，并直接解析源图元数据。</p>
         <div class="endpoint">
           <code id="image-meta"
             >/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&amp;format=json</code
@@ -322,23 +326,29 @@
         </div>
 
         <h3>JSON 返回示例</h3>
+        <!-- prettier-ignore -->
         <div class="json-preview">{
   "width": 800,
   "height": 600,
-  "format": "webp",
-  "size": 12345,
+  "format": "jpeg",
   "channels": 3,
   "sourceUrl": "https://example.com/photo.jpg",
   "sourceContentType": "image/jpeg",
-  "sourceBytes": 98765
+  "bytesDownloaded": 5120
 }</div>
 
         <h3>常用场景</h3>
         <div class="panel">
           <ul>
-            <li><strong>卡片缩略图</strong>：<code>width=640&amp;height=360&amp;fit=cover</code></li>
+            <li>
+              <strong>卡片缩略图</strong>：<code>width=640&amp;height=360&amp;fit=cover</code>
+            </li>
             <li><strong>头像</strong>：<code>width=256&amp;height=256&amp;fit=inside</code></li>
-            <li><strong>商品图</strong>：<code>width=800&amp;height=800&amp;fit=contain&amp;background=FFFFFF</code></li>
+            <li>
+              <strong>商品图</strong>：<code
+                >width=800&amp;height=800&amp;fit=contain&amp;background=FFFFFF</code
+              >
+            </li>
             <li><strong>低带宽预览</strong>：<code>width=480&amp;quality=50</code></li>
           </ul>
         </div>
@@ -348,7 +358,10 @@
         <h2 id="videos-title"><span class="section-icon">🎬</span>视频处理</h2>
 
         <div class="panel video">
-          <p>自动识别 <code>.mp4</code> 和 <code>.webm</code> 文件，提取首帧作为封面图。采用 Range 请求优化，仅下载前 512KB 数据。</p>
+          <p>
+            自动识别 <code>.mp4</code> 和 <code>.webm</code> 文件，提取首帧作为封面图。采用 Range
+            请求优化，仅下载前 512KB 数据。
+          </p>
         </div>
 
         <h3>提取视频封面</h3>
@@ -374,6 +387,7 @@
         </div>
 
         <h3>JSON 返回示例</h3>
+        <!-- prettier-ignore -->
         <div class="json-preview">{
   "width": 1920,
   "height": 1080,
@@ -468,7 +482,8 @@
             <tr>
               <td><code>fit</code></td>
               <td>
-                <code>inside</code>、<code>cover</code>、<code>contain</code>、<code>fill</code>、<code>outside</code>。
+                <code>inside</code
+                >、<code>cover</code>、<code>contain</code>、<code>fill</code>、<code>outside</code>。
               </td>
               <td><code>inside</code></td>
             </tr>
@@ -479,7 +494,9 @@
             </tr>
             <tr>
               <td><code>format</code></td>
-              <td>输出格式：<code>webp</code>、<code>jpeg</code>、<code>png</code>、<code>avif</code>、<code>json</code>。</td>
+              <td>
+                输出格式：<code>webp</code>、<code>jpeg</code>、<code>png</code>、<code>avif</code>、<code>json</code>。
+              </td>
               <td><code>webp</code></td>
             </tr>
             <tr>
@@ -502,7 +519,9 @@
 
         <h3>源媒体域名白名单</h3>
         <div class="panel">
-          <p>生产环境建议配置 <code>IMAGE_URL_ALLOWLIST</code>，限制接口只能下载可信域名下的媒体。</p>
+          <p>
+            生产环境建议配置 <code>IMAGE_URL_ALLOWLIST</code>，限制接口只能下载可信域名下的媒体。
+          </p>
           <pre><code>IMAGE_URL_ALLOWLIST=example.com,trusted-cdn.com</code></pre>
           <p>配置规则：</p>
           <ul>
@@ -542,7 +561,9 @@
     </main>
 
     <footer>
-      <div class="shell">缓存策略：浏览器 1 天，Vercel CDN 7 天。支持 sharp 图片处理和 ffmpeg 视频处理。</div>
+      <div class="shell">
+        缓存策略：浏览器 1 天，Vercel CDN 7 天。支持 sharp 图片处理和 ffmpeg 视频处理。
+      </div>
     </footer>
 
     <script>
@@ -553,7 +574,9 @@
           await navigator.clipboard.writeText(target.textContent.trim());
           const oldText = button.textContent;
           button.textContent = '已复制';
-          window.setTimeout(() => { button.textContent = oldText; }, 1200);
+          window.setTimeout(() => {
+            button.textContent = oldText;
+          }, 1200);
         });
       });
 

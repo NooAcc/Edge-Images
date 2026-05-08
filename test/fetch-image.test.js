@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { ImageFetchError, fetchImage } from '../lib/fetch-image.js';
+import {
+  DEFAULT_IMAGE_METADATA_BYTES,
+  ImageFetchError,
+  fetchImage,
+  fetchImageMetadataRange,
+} from '../lib/fetch-image.js';
 import { createImageLogger } from '../lib/image-logger.js';
 import { createCaptureSink } from './helpers/capture-logs.js';
 
@@ -43,6 +48,53 @@ test('fetchImage sends browser-like image request headers', async () => {
   assert.match(requestOptions.headers['User-Agent'], /Mozilla\/5\.0 .* Chrome\/124\.0/);
   assert.equal(requestOptions.headers['Accept-Language'], 'zh-CN,zh;q=0.9,en;q=0.8');
   assert.equal(requestOptions.headers.Referer, 'https://example.com/');
+});
+
+test('fetchImageMetadataRange requests only the image metadata prefix', async () => {
+  let requestOptions;
+
+  const result = await fetchImageMetadataRange('https://example.com/photo.jpg', {
+    fetchImpl: async (_url, options) => {
+      requestOptions = options;
+      return fakeStreamResponse({
+        status: 206,
+        ok: true,
+        body: createStreamBody([Buffer.from('jpeg')]),
+        headers: {
+          'content-type': 'image/jpeg',
+          'content-length': '4',
+        },
+      });
+    },
+  });
+
+  assert.equal(requestOptions.headers.Range, 'bytes=0-5119');
+  assert.equal(result.contentType, 'image/jpeg');
+  assert.equal(result.buffer.toString(), 'jpeg');
+  assert.equal(result.bytesDownloaded, 4);
+  assert.equal(result.status, 206);
+});
+
+test('fetchImageMetadataRange stops after 5KB when Range is ignored', async () => {
+  const body = createStreamBody(createFixedChunks(10, 1024));
+
+  const result = await fetchImageMetadataRange('https://example.com/photo.jpg', {
+    fetchImpl: async () =>
+      fakeStreamResponse({
+        status: 200,
+        ok: true,
+        body,
+        headers: {
+          'content-type': 'image/jpeg',
+          'content-length': String(10 * 1024),
+        },
+      }),
+  });
+
+  assert.equal(result.buffer.length, DEFAULT_IMAGE_METADATA_BYTES);
+  assert.equal(result.bytesDownloaded, DEFAULT_IMAGE_METADATA_BYTES);
+  assert.equal(body.readCount, 5);
+  assert.equal(body.cancelled, true);
 });
 
 test('fetchImage rejects non-2xx responses', async () => {
@@ -198,4 +250,49 @@ function fakeResponse({ status = 200, ok = true, body = Buffer.alloc(0), headers
       return body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength);
     },
   };
+}
+
+function fakeStreamResponse({ status = 200, ok = true, body, headers = {} } = {}) {
+  return {
+    status,
+    ok,
+    headers: {
+      get(name) {
+        return headers[name.toLowerCase()];
+      },
+    },
+    body,
+  };
+}
+
+function createStreamBody(chunks) {
+  let index = 0;
+  const body = {
+    cancelled: false,
+    readCount: 0,
+    getReader() {
+      return {
+        async read() {
+          if (body.cancelled || index >= chunks.length) {
+            return { done: true };
+          }
+
+          body.readCount++;
+          const value = chunks[index];
+          index++;
+          return { done: false, value };
+        },
+        async cancel() {
+          body.cancelled = true;
+        },
+        releaseLock() {},
+      };
+    },
+  };
+
+  return body;
+}
+
+function createFixedChunks(count, size) {
+  return Array.from({ length: count }, (_item, index) => Buffer.alloc(size, index));
 }
