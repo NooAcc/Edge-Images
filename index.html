@@ -6,7 +6,7 @@
     <title>Vercel Edge Images</title>
     <meta
       name="description"
-      content="基于 Vercel Node.js Serverless Functions 和 sharp 的动态图片处理服务。"
+      content="基于 Vercel Node.js Serverless Functions 和 sharp 的动态图片处理服务，支持多格式输出和元信息查询。"
     />
     <style>
       :root {
@@ -398,10 +398,10 @@
       <section class="hero" aria-labelledby="page-title">
         <div>
           <p class="eyebrow">Vercel Node.js 图片处理服务</p>
-          <h1 id="page-title">把远程图片转换为统一、轻量的 WebP 输出</h1>
+          <h1 id="page-title">把远程图片转换为多格式输出</h1>
           <p class="lead">
             这个程序接收第三方图片 URL，根据查询参数完成缩放、裁剪、填充、旋转和翻转，
-            并把最终图片限制在 1024 x 1024 以内，适合作为前端动态图片 CDN 使用。
+            支持输出 WebP、JPEG、PNG、AVIF 格式，也可通过 <code>format=json</code> 获取图片元信息。
           </p>
           <div class="actions">
             <a class="button" href="#usage">查看调用示例</a>
@@ -414,7 +414,7 @@
           <div class="preview-bar">
             <div class="meter" aria-hidden="true"><span></span></div>
             <div class="preview-caption">
-              <span>WebP quality 85</span>
+              <span>WebP/JPEG/PNG/AVIF</span>
               <span>max 1024 x 1024</span>
             </div>
           </div>
@@ -438,12 +438,12 @@
             </p>
           </article>
           <article class="card">
-            <h3>WebP 优化</h3>
-            <p>默认输出 WebP，质量为 85，可通过 <code>quality</code> 参数调整压缩程度。</p>
+            <h3>多格式输出</h3>
+            <p>支持 WebP、JPEG、PNG、AVIF 四种格式，可通过 <code>format</code> 参数选择。</p>
           </article>
           <article class="card">
-            <h3>边缘缓存</h3>
-            <p>返回适合 Vercel CDN 的缓存头，相同查询参数可复用缓存结果。</p>
+            <h3>元信息查询</h3>
+            <p>设置 <code>format=json</code> 返回图片元信息，包含宽高、格式、大小等数据。</p>
           </article>
           <article class="card">
             <h3>安全控制</h3>
@@ -502,8 +502,13 @@
             </tr>
             <tr>
               <td><code>quality</code></td>
-              <td>WebP 输出质量，范围 1 到 100。</td>
+              <td>输出质量，范围 1 到 100。</td>
               <td><code>85</code></td>
+            </tr>
+            <tr>
+              <td><code>format</code></td>
+              <td>输出格式，支持 <code>webp</code>、<code>jpeg</code>、<code>png</code>、<code>avif</code>、<code>json</code>。</td>
+              <td><code>webp</code></td>
             </tr>
             <tr>
               <td><code>background</code></td>
@@ -522,13 +527,13 @@
       <section aria-label="运行提示">
         <div class="note">
           本首页只负责说明程序功能；实际图片处理接口是 <code>/api/image</code>。 部署到 Vercel
-          后，根路径显示该说明页，接口路径继续按查询参数返回图片。
+          后，根路径显示该说明页，接口路径继续按查询参数返回图片或 JSON 元信息。
         </div>
       </section>
     </main>
 
     <footer>
-      <div class="shell">Powered by Vercel Serverless Functions and sharp WebP encoding.</div>
+      <div class="shell">Powered by Vercel Serverless Functions and sharp multi-format image encoding.</div>
     </footer>
 
     <script>
