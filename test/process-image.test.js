@@ -1,61 +1,57 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+import assert from 'node:assert/strict';
+import test from 'node:test';
 
-import { createImageLogger } from "../lib/image-logger.js";
-import { buildResizeOptions, processImage } from "../lib/process-image.js";
-import {
-  createFakeSharp,
-  decodeOutput,
-  makeImageBytes,
-} from "./helpers/fake-sharp.js";
-import { createCaptureSink } from "./helpers/capture-logs.js";
+import { createImageLogger } from '../lib/image-logger.js';
+import { buildResizeOptions, processImage } from '../lib/process-image.js';
+import { createFakeSharp, decodeOutput, makeImageBytes } from './helpers/fake-sharp.js';
+import { createCaptureSink } from './helpers/capture-logs.js';
 
-test("buildResizeOptions uses sharp native inside fit as the default cap", () => {
+test('buildResizeOptions uses sharp native inside fit as the default cap', () => {
   assert.deepEqual(
     buildResizeOptions({
-      fit: "inside",
+      fit: 'inside',
       background: [255, 255, 255],
     }),
     {
       width: 1024,
       height: 1024,
-      fit: "inside",
+      fit: 'inside',
       withoutEnlargement: true,
       fastShrinkOnLoad: true,
     },
   );
 });
 
-test("buildResizeOptions passes sharp native fit options directly", () => {
+test('buildResizeOptions passes sharp native fit options directly', () => {
   assert.deepEqual(
     buildResizeOptions({
       width: 800,
       height: 600,
-      fit: "cover",
+      fit: 'cover',
       background: [255, 255, 255],
     }),
     {
       width: 800,
       height: 600,
-      fit: "cover",
+      fit: 'cover',
       withoutEnlargement: true,
       fastShrinkOnLoad: true,
     },
   );
 });
 
-test("buildResizeOptions adds background only for native contain", () => {
+test('buildResizeOptions adds background only for native contain', () => {
   assert.deepEqual(
     buildResizeOptions({
       width: 500,
       height: 500,
-      fit: "contain",
+      fit: 'contain',
       background: [255, 0, 0],
     }),
     {
       width: 500,
       height: 500,
-      fit: "contain",
+      fit: 'contain',
       withoutEnlargement: true,
       fastShrinkOnLoad: true,
       background: { r: 255, g: 0, b: 0, alpha: 1 },
@@ -63,18 +59,18 @@ test("buildResizeOptions adds background only for native contain", () => {
   );
 });
 
-test("processImage uses one native sharp resize and fastest WebP effort", async () => {
+test('processImage uses one native sharp resize and fastest WebP effort', async () => {
   const log = [];
   const { buffer, metadata } = await processImage(
     makeImageBytes(2048, 1536),
     {
       width: 800,
       height: 600,
-      fit: "cover",
+      fit: 'cover',
       quality: 50,
       background: [255, 255, 255],
-      flip: "",
-      format: "webp",
+      flip: '',
+      format: 'webp',
     },
     {
       sharp: createFakeSharp(log),
@@ -84,41 +80,41 @@ test("processImage uses one native sharp resize and fastest WebP effort", async 
   const decoded = decodeOutput(buffer);
   assert.equal(metadata.width, 800);
   assert.equal(metadata.height, 600);
-  assert.equal(metadata.format, "webp");
+  assert.equal(metadata.format, 'webp');
   assert.equal(decoded.quality, 50);
   assert.equal(decoded.formatOptions.effort, 0);
   assert.deepEqual(
     log.filter((entry) => entry.op),
     [
       {
-        op: "resize",
+        op: 'resize',
         from: [2048, 1536],
         to: [800, 600],
         options: {
           width: 800,
           height: 600,
-          fit: "cover",
+          fit: 'cover',
           withoutEnlargement: true,
           fastShrinkOnLoad: true,
         },
-        fit: "cover",
+        fit: 'cover',
         background: undefined,
       },
     ],
   );
 });
 
-test("processImage native inside fit does not upscale smaller inputs", async () => {
+test('processImage native inside fit does not upscale smaller inputs', async () => {
   const { buffer, metadata } = await processImage(
     makeImageBytes(500, 500),
     {
       width: 1024,
       height: 1024,
-      fit: "inside",
+      fit: 'inside',
       quality: 85,
       background: [255, 255, 255],
-      flip: "",
-      format: "webp",
+      flip: '',
+      format: 'webp',
     },
     {
       sharp: createFakeSharp(),
@@ -129,15 +125,15 @@ test("processImage native inside fit does not upscale smaller inputs", async () 
   assert.equal(metadata.height, 500);
 });
 
-test("processImage enforces max size when dimensions are omitted", async () => {
+test('processImage enforces max size when dimensions are omitted', async () => {
   const { buffer, metadata } = await processImage(
     makeImageBytes(5000, 5000),
     {
-      fit: "inside",
+      fit: 'inside',
       quality: 85,
       background: [255, 255, 255],
-      flip: "",
-      format: "webp",
+      flip: '',
+      format: 'webp',
     },
     {
       sharp: createFakeSharp(),
@@ -148,17 +144,17 @@ test("processImage enforces max size when dimensions are omitted", async () => {
   assert.equal(metadata.height, 1024);
 });
 
-test("processImage native contain fills the canvas with the requested background", async () => {
+test('processImage native contain fills the canvas with the requested background', async () => {
   const { buffer, metadata } = await processImage(
     makeImageBytes(800, 400),
     {
       width: 500,
       height: 500,
-      fit: "contain",
+      fit: 'contain',
       quality: 85,
       background: [255, 0, 0],
-      flip: "",
-      format: "webp",
+      flip: '',
+      format: 'webp',
     },
     {
       sharp: createFakeSharp(),
@@ -171,50 +167,50 @@ test("processImage native contain fills the canvas with the requested background
   assert.deepEqual(decoded.firstPixel, [255, 0, 0, 255]);
 });
 
-test("processImage uses sharp native orientation operations", async () => {
+test('processImage uses sharp native orientation operations', async () => {
   const log = [];
   const { buffer, metadata } = await processImage(
     makeImageBytes(300, 600),
     {
       width: 200,
-      fit: "inside",
+      fit: 'inside',
       quality: 85,
       rotate: 90,
-      flip: "hv",
+      flip: 'hv',
       background: [255, 255, 255],
-      format: "webp",
+      format: 'webp',
     },
     {
       sharp: createFakeSharp(log),
     },
   );
 
-  const decoded = decodeOutput(buffer);
+  decodeOutput(buffer);
   assert.equal(metadata.width, 200);
   assert.equal(metadata.height, 100);
   assert.deepEqual(
     log.map((entry) => entry.op),
-    ["rotate", "flip", "flop", "resize"],
+    ['rotate', 'flip', 'flop', 'resize'],
   );
 });
 
-test("processImage logs sharp native transform plan", async () => {
+test('processImage logs sharp native transform plan', async () => {
   const capture = createCaptureSink();
   const logger = createImageLogger({
-    env: { IMAGE_DEBUG_LOGS: "1" },
+    env: { IMAGE_DEBUG_LOGS: '1' },
     sink: capture.sink,
-    requestId: "req_avif",
+    requestId: 'req_avif',
   });
 
   const { buffer, metadata } = await processImage(
-    makeImageBytes(320, 180, { format: "avif" }),
+    makeImageBytes(320, 180, { format: 'avif' }),
     {
-      fit: "inside",
+      fit: 'inside',
       quality: 82,
       background: [255, 255, 255],
-      flip: "",
-      sourceContentType: "image/avif",
-      format: "webp",
+      flip: '',
+      sourceContentType: 'image/avif',
+      format: 'webp',
     },
     {
       sharp: createFakeSharp(),
@@ -224,26 +220,26 @@ test("processImage logs sharp native transform plan", async () => {
 
   const decoded = decodeOutput(buffer);
   const records = capture.records();
-  const plan = records.find((record) => record.event === "image.transform.plan");
+  const plan = records.find((record) => record.event === 'image.transform.plan');
 
   assert.equal(decoded.width, 320);
   assert.equal(metadata.height, 180);
   assert.equal(decoded.quality, 82);
-  assert.equal(plan.inputFormat, "avif");
-  assert.equal(plan.resize.fit, "inside");
+  assert.equal(plan.inputFormat, 'avif');
+  assert.equal(plan.resize.fit, 'inside');
 });
 
-test("processImage encodes to jpeg format", async () => {
+test('processImage encodes to jpeg format', async () => {
   const log = [];
   const { buffer, metadata } = await processImage(
     makeImageBytes(800, 600),
     {
       width: 400,
-      fit: "inside",
+      fit: 'inside',
       quality: 75,
       background: [255, 255, 255],
-      flip: "",
-      format: "jpeg",
+      flip: '',
+      format: 'jpeg',
     },
     {
       sharp: createFakeSharp(log),
@@ -251,21 +247,21 @@ test("processImage encodes to jpeg format", async () => {
   );
 
   const decoded = decodeOutput(buffer);
-  assert.equal(metadata.format, "jpeg");
-  assert.equal(decoded.outputFormat, "jpeg");
+  assert.equal(metadata.format, 'jpeg');
+  assert.equal(decoded.outputFormat, 'jpeg');
   assert.equal(decoded.quality, 75);
 });
 
-test("processImage encodes to png format", async () => {
+test('processImage encodes to png format', async () => {
   const { buffer, metadata } = await processImage(
     makeImageBytes(800, 600),
     {
       width: 400,
-      fit: "inside",
+      fit: 'inside',
       quality: 85,
       background: [255, 255, 255],
-      flip: "",
-      format: "png",
+      flip: '',
+      format: 'png',
     },
     {
       sharp: createFakeSharp(),
@@ -273,20 +269,20 @@ test("processImage encodes to png format", async () => {
   );
 
   const decoded = decodeOutput(buffer);
-  assert.equal(metadata.format, "png");
-  assert.equal(decoded.outputFormat, "png");
+  assert.equal(metadata.format, 'png');
+  assert.equal(decoded.outputFormat, 'png');
 });
 
-test("processImage encodes to avif format", async () => {
+test('processImage encodes to avif format', async () => {
   const { buffer, metadata } = await processImage(
     makeImageBytes(800, 600),
     {
       width: 400,
-      fit: "inside",
+      fit: 'inside',
       quality: 70,
       background: [255, 255, 255],
-      flip: "",
-      format: "avif",
+      flip: '',
+      format: 'avif',
     },
     {
       sharp: createFakeSharp(),
@@ -294,28 +290,28 @@ test("processImage encodes to avif format", async () => {
   );
 
   const decoded = decodeOutput(buffer);
-  assert.equal(metadata.format, "avif");
-  assert.equal(decoded.outputFormat, "avif");
+  assert.equal(metadata.format, 'avif');
+  assert.equal(decoded.outputFormat, 'avif');
   assert.equal(decoded.formatOptions.effort, 0);
 });
 
-test("processImage with format=json still processes and returns metadata", async () => {
+test('processImage with format=json still processes and returns metadata', async () => {
   const { buffer, metadata } = await processImage(
     makeImageBytes(800, 600),
     {
       width: 400,
-      fit: "inside",
+      fit: 'inside',
       quality: 85,
       background: [255, 255, 255],
-      flip: "",
-      format: "json",
+      flip: '',
+      format: 'json',
     },
     {
       sharp: createFakeSharp(),
     },
   );
 
-  assert.equal(metadata.format, "webp");
+  assert.equal(metadata.format, 'webp');
   assert.equal(metadata.width, 400);
   assert.equal(metadata.height, 300);
   assert.equal(metadata.channels, 3);
@@ -323,25 +319,25 @@ test("processImage with format=json still processes and returns metadata", async
   assert.ok(Buffer.isBuffer(buffer));
 });
 
-test("processImage returns metadata with width, height, format, size, and channels", async () => {
+test('processImage returns metadata with width, height, format, size, and channels', async () => {
   const { metadata } = await processImage(
     makeImageBytes(800, 600),
     {
       width: 400,
-      fit: "inside",
+      fit: 'inside',
       quality: 85,
       background: [255, 255, 255],
-      flip: "",
-      format: "webp",
+      flip: '',
+      format: 'webp',
     },
     {
       sharp: createFakeSharp(),
     },
   );
 
-  assert.equal(typeof metadata.width, "number");
-  assert.equal(typeof metadata.height, "number");
-  assert.equal(metadata.format, "webp");
-  assert.equal(typeof metadata.size, "number");
-  assert.equal(typeof metadata.channels, "number");
+  assert.equal(typeof metadata.width, 'number');
+  assert.equal(typeof metadata.height, 'number');
+  assert.equal(metadata.format, 'webp');
+  assert.equal(typeof metadata.size, 'number');
+  assert.equal(typeof metadata.channels, 'number');
 });

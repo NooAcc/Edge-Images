@@ -1,46 +1,43 @@
-import assert from "node:assert/strict";
-import { deflateSync } from "node:zlib";
-import test from "node:test";
+import assert from 'node:assert/strict';
+import { deflateSync } from 'node:zlib';
+import test from 'node:test';
 
-import { loadSharp, processImage } from "../lib/process-image.js";
+import { loadSharp, processImage } from '../lib/process-image.js';
 
-test("smoke: actual sharp pipeline decodes PNG and emits WebP bytes", async () => {
+test('smoke: actual sharp pipeline decodes PNG and emits WebP bytes', async () => {
   const png = makeRgbaPng(2, 2, [
     [255, 0, 0, 255],
     [0, 255, 0, 255],
     [0, 0, 255, 255],
-    [255, 255, 255, 255]
+    [255, 255, 255, 255],
   ]);
 
   const { buffer } = await processImage(png, {
-    fit: "inside",
+    fit: 'inside',
     quality: 85,
     background: [255, 255, 255],
-    flip: ""
+    flip: '',
   });
 
-  assert.equal(buffer.slice(0, 4).toString("ascii"), "RIFF");
-  assert.equal(buffer.slice(8, 12).toString("ascii"), "WEBP");
+  assert.equal(buffer.slice(0, 4).toString('ascii'), 'RIFF');
+  assert.equal(buffer.slice(8, 12).toString('ascii'), 'WEBP');
   assert.ok(buffer.length > 32);
 });
 
-test("smoke: actual WebP output preserves transparent alpha", async () => {
+test('smoke: actual WebP output preserves transparent alpha', async () => {
   const png = makeRgbaPng(2, 1, [
     [255, 0, 0, 0],
-    [0, 0, 255, 255]
+    [0, 0, 255, 255],
   ]);
 
   const { buffer: output } = await processImage(png, {
-    fit: "inside",
+    fit: 'inside',
     quality: 85,
     background: [255, 255, 255],
-    flip: ""
+    flip: '',
   });
   const sharp = await loadSharp();
-  const decoded = await sharp(output)
-    .ensureAlpha()
-    .raw()
-    .toBuffer({ resolveWithObject: true });
+  const decoded = await sharp(output).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
 
   assert.equal(decoded.info.width, 2);
   assert.equal(decoded.info.height, 1);
@@ -66,9 +63,9 @@ function makeRgbaPng(width, height, pixels) {
 
   return Buffer.concat([
     Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
-    pngChunk("IHDR", ihdr),
-    pngChunk("IDAT", deflateSync(Buffer.from(scanlines))),
-    pngChunk("IEND", Buffer.alloc(0))
+    pngChunk('IHDR', ihdr),
+    pngChunk('IDAT', deflateSync(Buffer.from(scanlines))),
+    pngChunk('IEND', Buffer.alloc(0)),
   ]);
 }
 

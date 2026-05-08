@@ -54,18 +54,18 @@ Integration and system tests:
 
 ## Acceptance Mapping
 
-| Requirement scenario | Covered by |
-| --- | --- |
-| JPEG 2048 x 1536 to 800 x 600 `cover` | `process-image.test.js`, `system.test.js` with equivalent dimensions |
-| Width-only proportional resize | `process-image.test.js` |
-| `fit=contain` with red background | `process-image.test.js` |
-| `inside` must not upscale | `process-image.test.js` |
-| `quality=50` reaches encoder | `process-image.test.js` |
-| Transparent channel preservation | `sharp-smoke.test.js` decodes transparent WebP output and checks alpha |
-| Oversized original without dimensions | `process-image.test.js` |
-| Download failure | `fetch-image.test.js`, `api-image.test.js` |
-| Processing failure fallback | `api-image.test.js`, `system.test.js` |
-| URL allowlist rejection | `url-allowlist.test.js`, `parse-params.test.js`, `api-image.test.js` |
+| Requirement scenario                  | Covered by                                                             |
+| ------------------------------------- | ---------------------------------------------------------------------- |
+| JPEG 2048 x 1536 to 800 x 600 `cover` | `process-image.test.js`, `system.test.js` with equivalent dimensions   |
+| Width-only proportional resize        | `process-image.test.js`                                                |
+| `fit=contain` with red background     | `process-image.test.js`                                                |
+| `inside` must not upscale             | `process-image.test.js`                                                |
+| `quality=50` reaches encoder          | `process-image.test.js`                                                |
+| Transparent channel preservation      | `sharp-smoke.test.js` decodes transparent WebP output and checks alpha |
+| Oversized original without dimensions | `process-image.test.js`                                                |
+| Download failure                      | `fetch-image.test.js`, `api-image.test.js`                             |
+| Processing failure fallback           | `api-image.test.js`, `system.test.js`                                  |
+| URL allowlist rejection               | `url-allowlist.test.js`, `parse-params.test.js`, `api-image.test.js`   |
 
 ## Manual Smoke Test
 

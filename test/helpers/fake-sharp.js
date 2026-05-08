@@ -9,26 +9,26 @@ export function makeImageBytes(width, height, options = {}) {
     JSON.stringify({
       width,
       height,
-      format: options.format || "jpeg",
+      format: options.format || 'jpeg',
       firstPixel: options.firstPixel || [11, 22, 33, 255],
     }),
   );
 }
 
 export function decodeOutput(buffer) {
-  return JSON.parse(Buffer.from(buffer).toString("utf8"));
+  return JSON.parse(Buffer.from(buffer).toString('utf8'));
 }
 
 class FakeSharpPipeline {
   constructor(input, log) {
-    const payload = JSON.parse(Buffer.from(input).toString("utf8"));
+    const payload = JSON.parse(Buffer.from(input).toString('utf8'));
     this.log = log;
     this.width = payload.width;
     this.height = payload.height;
-    this.format = payload.format || "jpeg";
+    this.format = payload.format || 'jpeg';
     this.firstPixel = payload.firstPixel || [11, 22, 33, 255];
     this.quality = undefined;
-    this.outputFormat = "webp";
+    this.outputFormat = 'webp';
     this.formatOptions = {};
     this.flippedH = false;
     this.flippedV = false;
@@ -44,7 +44,7 @@ class FakeSharpPipeline {
 
   rotate(angle) {
     this.log.push({
-      op: "rotate",
+      op: 'rotate',
       from: [this.width, this.height],
       angle,
     });
@@ -57,20 +57,20 @@ class FakeSharpPipeline {
   }
 
   flip() {
-    this.log.push({ op: "flip", size: [this.width, this.height] });
+    this.log.push({ op: 'flip', size: [this.width, this.height] });
     this.flippedV = true;
     return this;
   }
 
   flop() {
-    this.log.push({ op: "flop", size: [this.width, this.height] });
+    this.log.push({ op: 'flop', size: [this.width, this.height] });
     this.flippedH = true;
     return this;
   }
 
   extract({ left, top, width, height }) {
     this.log.push({
-      op: "extract",
+      op: 'extract',
       from: [this.width, this.height],
       box: [left, top, width, height],
     });
@@ -83,7 +83,7 @@ class FakeSharpPipeline {
     const from = [this.width, this.height];
     const next = resolveResize(this.width, this.height, options);
     this.log.push({
-      op: "resize",
+      op: 'resize',
       from,
       to: [next.width, next.height],
       options: { ...options },
@@ -93,7 +93,7 @@ class FakeSharpPipeline {
     this.width = next.width;
     this.height = next.height;
 
-    if (options.fit === "contain" && options.background) {
+    if (options.fit === 'contain' && options.background) {
       this.firstPixel = [
         options.background.r,
         options.background.g,
@@ -106,28 +106,28 @@ class FakeSharpPipeline {
   }
 
   webp(options) {
-    this.outputFormat = "webp";
+    this.outputFormat = 'webp';
     this.quality = options.quality;
     this.formatOptions = { ...options };
     return this;
   }
 
   jpeg(options) {
-    this.outputFormat = "jpeg";
+    this.outputFormat = 'jpeg';
     this.quality = options.quality;
     this.formatOptions = { ...options };
     return this;
   }
 
   png(options) {
-    this.outputFormat = "png";
+    this.outputFormat = 'png';
     this.quality = options.quality;
     this.formatOptions = { ...options };
     return this;
   }
 
   avif(options) {
-    this.outputFormat = "avif";
+    this.outputFormat = 'avif';
     this.quality = options.quality;
     this.formatOptions = { ...options };
     return this;
@@ -169,7 +169,7 @@ function resolveResize(sourceWidth, sourceHeight, options) {
   const targetHeight = options.height;
 
   if (targetWidth && targetHeight) {
-    if (options.fit === "inside") {
+    if (options.fit === 'inside') {
       return scaleTo(
         sourceWidth,
         sourceHeight,
@@ -178,7 +178,7 @@ function resolveResize(sourceWidth, sourceHeight, options) {
       );
     }
 
-    if (options.fit === "outside") {
+    if (options.fit === 'outside') {
       return scaleTo(
         sourceWidth,
         sourceHeight,

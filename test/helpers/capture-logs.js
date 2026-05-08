@@ -12,7 +12,7 @@ export function createCaptureSink() {
     },
     log(line) {
       lines.push(line);
-    }
+    },
   };
 
   return {
@@ -20,7 +20,7 @@ export function createCaptureSink() {
     lines,
     records() {
       return lines.map(parseImageLogLine);
-    }
+    },
   };
 }
 

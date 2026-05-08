@@ -9,14 +9,17 @@ This API receives a remote image URL and returns a transformed WebP image. It is
 Always URL-encode the source image URL:
 
 ```js
-const src = encodeURIComponent("https://example.com/photo.jpg");
+const src = encodeURIComponent('https://example.com/photo.jpg');
 const imageUrl = `/api/image?url=${src}&width=800&height=600&fit=cover`;
 ```
 
 Use it in HTML:
 
 ```html
-<img src="/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&width=800&height=600&fit=cover" alt="">
+<img
+  src="/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&width=800&height=600&fit=cover"
+  alt=""
+/>
 ```
 
 ## Source URL Allowlist

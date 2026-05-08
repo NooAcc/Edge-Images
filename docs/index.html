@@ -1,10 +1,10 @@
 <!doctype html>
 <html lang="zh-CN">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>使用文档 - Vercel Edge Images</title>
-    <meta name="description" content="Vercel Edge Images 图片处理 API 使用文档。">
+    <meta name="description" content="Vercel Edge Images 图片处理 API 使用文档。" />
     <style>
       :root {
         --ink: #1f2933;
@@ -25,8 +25,13 @@
         background: var(--page);
         color: var(--ink);
         font-family:
-          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-          "Segoe UI", sans-serif;
+          Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          sans-serif;
         line-height: 1.65;
       }
 
@@ -102,8 +107,7 @@
       }
 
       code {
-        font-family:
-          "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+        font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
         font-size: 14px;
       }
 
@@ -233,7 +237,10 @@
             </tr>
             <tr>
               <td><code>fit</code></td>
-              <td><code>inside</code>、<code>cover</code>、<code>contain</code>、<code>fill</code>、<code>outside</code>。</td>
+              <td>
+                <code>inside</code
+                >、<code>cover</code>、<code>contain</code>、<code>fill</code>、<code>outside</code>。
+              </td>
               <td><code>inside</code></td>
             </tr>
             <tr>
@@ -266,7 +273,9 @@
           <ul>
             <li>卡片缩略图：<code>width=640&amp;height=360&amp;fit=cover</code></li>
             <li>头像：<code>width=256&amp;height=256&amp;fit=inside</code></li>
-            <li>商品图：<code>width=800&amp;height=800&amp;fit=contain&amp;background=FFFFFF</code></li>
+            <li>
+              商品图：<code>width=800&amp;height=800&amp;fit=contain&amp;background=FFFFFF</code>
+            </li>
             <li>低带宽预览：<code>width=480&amp;quality=50</code></li>
           </ul>
         </div>
@@ -275,9 +284,14 @@
       <section>
         <h2>源图域名白名单</h2>
         <div class="panel">
-          <p>生产环境建议配置 <code>IMAGE_URL_ALLOWLIST</code>，限制接口只能下载可信域名下的图片。</p>
+          <p>
+            生产环境建议配置 <code>IMAGE_URL_ALLOWLIST</code>，限制接口只能下载可信域名下的图片。
+          </p>
           <pre><code>IMAGE_URL_ALLOWLIST=example.com,trusted-cdn.com</code></pre>
-          <p>每个条目只需要写域名。配置 <code>example.com</code> 后，<code>example.com</code> 和 <code>*.example.com</code> 都会通过白名单。</p>
+          <p>
+            每个条目只需要写域名。配置 <code>example.com</code> 后，<code>example.com</code> 和
+            <code>*.example.com</code> 都会通过白名单。
+          </p>
           <ul>
             <li><code>example.com</code>：允许根域名和所有子域名。</li>
             <li><code>trusted-cdn.com</code>：允许该域名及其所有子域名。</li>
@@ -291,7 +305,10 @@
         <h2>响应与错误</h2>
         <div class="panel">
           <p>成功处理后返回 <code>Content-Type: image/webp</code>。</p>
-          <p>参数错误返回 400，源图下载失败返回 502。源图已下载但处理失败时，接口会透传原图，并添加 <code>X-Processing-Error</code> 响应头。</p>
+          <p>
+            参数错误返回 400，源图下载失败返回 502。源图已下载但处理失败时，接口会透传原图，并添加
+            <code>X-Processing-Error</code> 响应头。
+          </p>
         </div>
       </section>
     </main>

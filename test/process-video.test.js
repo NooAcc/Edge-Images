@@ -76,11 +76,13 @@ test('probeVideoMetadataFromUrl returns metadata from Range response', async () 
 
   const metadata = await probeVideoMetadataFromUrl('https://example.com/clip.mp4', {
     ffprobePath: '/usr/bin/ffprobe',
-    fetchImpl: createMockFetch([{
-      rangeStatus: 206,
-      rangeContentType: 'video/mp4',
-      rangeBody: new ArrayBuffer(512 * 1024),
-    }]),
+    fetchImpl: createMockFetch([
+      {
+        rangeStatus: 206,
+        rangeContentType: 'video/mp4',
+        rangeBody: new ArrayBuffer(512 * 1024),
+      },
+    ]),
     runProcess: createMockRunProcess({
       stdout: Buffer.from(JSON.stringify(probeData)),
     }),
@@ -125,15 +127,18 @@ test('probeVideoMetadataFromUrl falls back to full download when partial probe f
 
   const metadata = await probeVideoMetadataFromUrl('https://example.com/clip.webm', {
     ffprobePath: '/usr/bin/ffprobe',
-    fetchImpl: createMockFetch([{
-      rangeStatus: 206,
-      rangeContentType: 'video/webm',
-      rangeBody: new ArrayBuffer(512 * 1024),
-    }, {
-      status: 200,
-      contentType: 'video/webm',
-      body: new ArrayBuffer(1024 * 1024),
-    }]),
+    fetchImpl: createMockFetch([
+      {
+        rangeStatus: 206,
+        rangeContentType: 'video/webm',
+        rangeBody: new ArrayBuffer(512 * 1024),
+      },
+      {
+        status: 200,
+        contentType: 'video/webm',
+        body: new ArrayBuffer(1024 * 1024),
+      },
+    ]),
     runProcess: mockRunProcess,
   });
 
@@ -148,11 +153,13 @@ test('extractVideoFrameRange returns frame from Range response', async () => {
 
   const result = await extractVideoFrameRange('https://example.com/clip.mp4', {
     ffmpegPath: '/usr/bin/ffmpeg',
-    fetchImpl: createMockFetch([{
-      rangeStatus: 206,
-      rangeContentType: 'video/mp4',
-      rangeBody: new ArrayBuffer(512 * 1024),
-    }]),
+    fetchImpl: createMockFetch([
+      {
+        rangeStatus: 206,
+        rangeContentType: 'video/mp4',
+        rangeBody: new ArrayBuffer(512 * 1024),
+      },
+    ]),
     runProcess: createMockRunProcess({
       stdout: framePng,
     }),
@@ -177,15 +184,18 @@ test('extractVideoFrameRange falls back to full download when partial decode fai
 
   const result = await extractVideoFrameRange('https://example.com/clip.mp4', {
     ffmpegPath: '/usr/bin/ffmpeg',
-    fetchImpl: createMockFetch([{
-      rangeStatus: 206,
-      rangeContentType: 'video/mp4',
-      rangeBody: new ArrayBuffer(512 * 1024),
-    }, {
-      status: 200,
-      contentType: 'video/mp4',
-      body: new ArrayBuffer(1024 * 1024),
-    }]),
+    fetchImpl: createMockFetch([
+      {
+        rangeStatus: 206,
+        rangeContentType: 'video/mp4',
+        rangeBody: new ArrayBuffer(512 * 1024),
+      },
+      {
+        status: 200,
+        contentType: 'video/mp4',
+        body: new ArrayBuffer(1024 * 1024),
+      },
+    ]),
     runProcess: mockRunProcess,
   });
 
@@ -199,11 +209,13 @@ test('extractVideoFrameRange uses full download when server does not support Ran
 
   const result = await extractVideoFrameRange('https://example.com/clip.mp4', {
     ffmpegPath: '/usr/bin/ffmpeg',
-    fetchImpl: createMockFetch([{
-      rangeStatus: 200,
-      rangeContentType: 'video/mp4',
-      rangeBody: new ArrayBuffer(1024 * 1024),
-    }]),
+    fetchImpl: createMockFetch([
+      {
+        rangeStatus: 200,
+        rangeContentType: 'video/mp4',
+        rangeBody: new ArrayBuffer(1024 * 1024),
+      },
+    ]),
     runProcess: createMockRunProcess({
       stdout: framePng,
     }),
@@ -217,11 +229,13 @@ test('extractVideoFrameRange throws VideoProcessError for non-video Content-Type
     () =>
       extractVideoFrameRange('https://example.com/not-video.html', {
         ffmpegPath: '/usr/bin/ffmpeg',
-        fetchImpl: createMockFetch([{
-          rangeStatus: 200,
-          rangeContentType: 'text/html',
-          rangeBody: new ArrayBuffer(100),
-        }]),
+        fetchImpl: createMockFetch([
+          {
+            rangeStatus: 200,
+            rangeContentType: 'text/html',
+            rangeBody: new ArrayBuffer(100),
+          },
+        ]),
         runProcess: createMockRunProcess(),
       }),
     /did not return a video/,
@@ -233,11 +247,13 @@ test('extractVideoFrameRange throws when ffmpeg fails with full download', async
     () =>
       extractVideoFrameRange('https://example.com/bad.mp4', {
         ffmpegPath: '/usr/bin/ffmpeg',
-        fetchImpl: createMockFetch([{
-          rangeStatus: 200,
-          rangeContentType: 'video/mp4',
-          rangeBody: new ArrayBuffer(1024),
-        }]),
+        fetchImpl: createMockFetch([
+          {
+            rangeStatus: 200,
+            rangeContentType: 'video/mp4',
+            rangeBody: new ArrayBuffer(1024),
+          },
+        ]),
         runProcess: createMockRunProcess({
           exitCode: 1,
           stderr: 'Conversion failed',
