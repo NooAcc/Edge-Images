@@ -1,17 +1,19 @@
 # Vercel Edge Images
 
-一个运行在 Vercel Node.js Serverless Functions 上的图片处理服务。它会下载远程图片，按参数执行受控的缩放、裁剪、填充等处理，并返回优化后的图片（支持 WebP、JPEG、PNG、AVIF）。
+一个运行在 Vercel Node.js Serverless Functions 上的图片和视频处理服务。它会下载远程图片或视频，按参数执行受控的缩放、裁剪、填充等处理，并返回优化后的输出（支持 WebP、JPEG、PNG、AVIF）。
 
 本实现遵循 `Vercel Edge Images.md` 中的项目需求：
 
 - `GET /api/image` 接收类似 Cloudflare Images 风格的查询参数。
 - 默认输出 WebP，质量为 `85`。
 - 支持多格式输出：`webp`、`jpeg`、`png`、`avif`。
-- 支持 `format=json` 返回图片元信息。
+- 支持 `format=json` 返回图片或视频元信息。
 - 输出尺寸始终限制在 `1024 x 1024` 以内。
-- 源图片下载超时时间为 20 秒。
+- 源媒体下载超时时间为 20 秒。
 - 图片处理失败时会降级返回已下载的原图。
-- 响应包含适合 CDN 缓存的响应头和图片元信息头。
+- 响应包含适合 CDN 缓存的响应头和媒体元信息头。
+- **支持视频封面提取**：自动检测 MP4/WebM 视频，提取首帧作为封面图。
+- **支持视频元数据查询**：获取视频分辨率、编码格式、时长等信息。
 
 ## 快速开始
 
@@ -21,13 +23,13 @@ npm test
 npm run vercel:dev
 ```
 
-可选的源图片域名白名单：
+可选的源媒体域名白名单：
 
 ```shell
 IMAGE_URL_ALLOWLIST=example.com,trusted-cdn.com
 ```
 
-本地调试源图下载、图片处理和降级路径时，可以打开结构化日志：
+本地调试源图下载、媒体处理和降级路径时，可以打开结构化日志：
 
 ```shell
 IMAGE_DEBUG_LOGS=1
@@ -36,7 +38,14 @@ IMAGE_DEBUG_LOGS=1
 本地接口示例：
 
 ```text
+# 图片处理
 http://localhost:3000/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&width=800&height=600&fit=cover
+
+# 视频封面提取
+http://localhost:3000/api/image?url=https%3A%2F%2Fexample.com%2Fclip.mp4&width=800&format=webp
+
+# 视频元数据查询
+http://localhost:3000/api/image?url=https%3A%2F%2Fexample.com%2Fclip.mp4&format=json
 ```
 
 ## 部署到 Vercel
@@ -48,7 +57,7 @@ http://localhost:3000/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&width=
 ```shell
 git init -b main
 git add .
-git commit -m "feat: 初始化 Vercel 图片处理服务"
+git commit -m "feat: 初始化 Vercel 媒体处理服务"
 git remote add origin https://github.com/<your-name>/<your-repo>.git
 git push -u origin main
 ```
@@ -63,13 +72,13 @@ git push -u origin main
 
 ### 3. 配置环境变量
 
-公开部署前，建议配置源图片域名白名单：
+公开部署前，建议配置源媒体域名白名单：
 
 ```text
 IMAGE_URL_ALLOWLIST=example.com,trusted-cdn.com
 ```
 
-每个配置的域名会同时允许该域名本身和所有子域名。如果 `IMAGE_URL_ALLOWLIST` 为空或未设置，服务会以开放图片代理的方式运行。
+每个配置的域名会同时允许该域名本身和所有子域名。如果 `IMAGE_URL_ALLOWLIST` 为空或未设置，服务会以开放媒体代理的方式运行。
 
 ### 4. 启用 Vercel Analytics 和 Speed Insights
 
@@ -109,10 +118,17 @@ vercel deploy --prod
 https://<your-project>.vercel.app/
 ```
 
-然后测试图片处理 API：
+然后测试媒体处理 API：
 
 ```text
+# 图片处理
 https://<your-project>.vercel.app/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&width=800&height=600&fit=cover
+
+# 视频封面
+https://<your-project>.vercel.app/api/image?url=https%3A%2F%2Fexample.com%2Fclip.mp4&width=800&format=webp
+
+# 视频元数据
+https://<your-project>.vercel.app/api/image?url=https%3A%2F%2Fexample.com%2Fclip.mp4&format=json
 ```
 
 预期响应头：
@@ -139,13 +155,13 @@ GET /api/image
 
 | 参数  | 说明                                                                  |
 | ----- | --------------------------------------------------------------------- |
-| `url` | 绝对 `http` 或 `https` 图片地址。需要使用 `encodeURIComponent` 编码。 |
+| `url` | 绝对 `http` 或 `https` 图片或视频地址。需要使用 `encodeURIComponent` 编码。 |
 
-## 源图片域名白名单
+## 源媒体域名白名单
 
-通过 `IMAGE_URL_ALLOWLIST` 限制服务可以下载的远程图片域名。只需要配置基础域名。例如，配置 `example.com` 后，会同时允许 `example.com`、`img.example.com` 和 `a.b.example.com`。
+通过 `IMAGE_URL_ALLOWLIST` 限制服务可以下载的远程媒体域名。只需要配置基础域名。例如，配置 `example.com` 后，会同时允许 `example.com`、`img.example.com` 和 `a.b.example.com`。
 
-如果该变量为空或未设置，白名单会关闭，服务会允许任意源图域名。
+如果该变量为空或未设置，白名单会关闭，服务会允许任意源媒体域名。
 
 白名单条目只接受基础域名或显式 `*`。不要填写 URL、路径、端口或 `*.example.com` 形式。
 
@@ -163,7 +179,7 @@ GET /api/image
 IMAGE_URL_ALLOWLIST=example.com trusted-cdn.com
 ```
 
-被拒绝的源图片域名会返回 `400` JSON 错误。
+被拒绝的源媒体域名会返回 `400` JSON 错误。
 
 可选查询参数：
 
@@ -179,6 +195,8 @@ IMAGE_URL_ALLOWLIST=example.com trusted-cdn.com
 | `flip`       | 未设置   | 支持 `h`、`v`、`hv`。                                                                         |
 
 ## 示例
+
+### 图片处理
 
 覆盖裁剪：
 
@@ -222,13 +240,29 @@ IMAGE_URL_ALLOWLIST=example.com trusted-cdn.com
 /api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&width=800&format=avif
 ```
 
-获取 JSON 元信息：
+### 视频封面提取
+
+提取 MP4 视频首帧作为封面：
 
 ```text
-/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&width=800&format=json
+/api/image?url=https%3A%2F%2Fexample.com%2Fclip.mp4&width=800&height=600&fit=cover
 ```
 
-JSON 响应示例：
+提取 WebM 视频首帧并输出 JPEG：
+
+```text
+/api/image?url=https%3A%2F%2Fexample.com%2Fclip.webm&width=1024&format=jpeg
+```
+
+### 元信息查询
+
+获取图片元信息：
+
+```text
+/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&format=json
+```
+
+图片 JSON 响应示例：
 
 ```json
 {
@@ -240,6 +274,26 @@ JSON 响应示例：
   "sourceUrl": "https://example.com/photo.jpg",
   "sourceContentType": "image/jpeg",
   "sourceBytes": 98765
+}
+```
+
+获取视频元信息：
+
+```text
+/api/image?url=https%3A%2F%2Fexample.com%2Fclip.mp4&format=json
+```
+
+视频 JSON 响应示例：
+
+```json
+{
+  "width": 1920,
+  "height": 1080,
+  "codec": "h264",
+  "duration": 10.5,
+  "format": "mov,mp4,m4a,3gp,3g2,mj2",
+  "sourceUrl": "https://example.com/clip.mp4",
+  "bytesDownloaded": 524288
 }
 ```
 
@@ -280,12 +334,12 @@ X-Processor: vercel-node-image
 | ------ | ---------------------------------------------------------------- |
 | `400`  | 请求参数缺失或非法。                                             |
 | `405`  | 请求方法不是 `GET`。                                             |
-| `502`  | 源图片无法下载、下载超时、返回非 2xx、文件过大，或响应不是图片。 |
-| `500`  | 源图片下载成功前发生未预期的服务器错误。                         |
+| `502`  | 源媒体无法下载、下载超时、返回非 2xx、文件过大，或响应不是媒体。 |
+| `500`  | 源媒体下载成功前发生未预期的服务器错误。                         |
 
 ## 调试日志
 
-默认不输出详细调试日志。设置 `IMAGE_DEBUG_LOGS=1` 后，服务会向控制台输出以 `[image]` 开头的 JSON 日志，包含请求参数、源图下载状态、请求头、内容类型、字节数、图片处理路径、图片变换计划、编码结果和原图降级原因。
+默认不输出详细调试日志。设置 `IMAGE_DEBUG_LOGS=1` 后，服务会向控制台输出以 `[image]` 开头的 JSON 日志，包含请求参数、源媒体下载状态、请求头、内容类型、字节数、媒体处理路径、媒体变换计划、编码结果和原图降级原因。
 
 本地运行示例：
 
@@ -293,11 +347,13 @@ X-Processor: vercel-node-image
 IMAGE_DEBUG_LOGS=1 npm run vercel:dev
 ```
 
-如果日志里出现 `image.source.fetch_bad_status` 且 `status` 为 `403`，说明请求还没有进入图片处理阶段，是源站拒绝了函数侧下载请求。如果出现 `image.request.processing_failed_fallback`，说明源图已经下载成功，但解码、变换或编码阶段失败，接口会按设计返回原图。如果源图响应头很快返回但 body 下载很慢，`image.source.fetch_timeout` 会在完整下载超时后出现。
+如果日志里出现 `image.source.fetch_bad_status` 且 `status` 为 `403`，说明请求还没有进入媒体处理阶段，是源站拒绝了函数侧下载请求。如果出现 `image.request.processing_failed_fallback`，说明源媒体已经下载成功，但解码、变换或编码阶段失败，接口会按设计返回原图。如果源媒体响应头很快返回但 body 下载很慢，`image.source.fetch_timeout` 会在完整下载超时后出现。
 
 ## 实现说明
 
 `sharp` 用于图片解码、几何变换和质量可控的多格式编码。处理流程会读取源图元数据，按参数规划旋转、翻转、缩放、裁剪或填充，然后通过单一 sharp 管线输出指定格式。
+
+`ffmpeg` 用于视频帧提取和元数据探测。视频处理采用 Range 请求优化，仅下载前 512KB 即可提取首帧或获取元数据，无需完整下载视频文件。
 
 支持的输出格式及特性：
 
@@ -307,7 +363,7 @@ IMAGE_DEBUG_LOGS=1 npm run vercel:dev
 | `jpeg` | 是       | 快       | 兼容性好                 |
 | `png`  | 是       | 中       | 支持透明通道             |
 | `avif` | 是       | 较慢     | 最高压缩率，现代浏览器   |
-| `json` | 不适用   | -        | 返回元信息，不返回图片   |
+| `json` | 不适用   | -        | 返回元信息，不返回媒体   |
 
 首页和文档页会初始化 Vercel Web Analytics 与 Speed Insights 的客户端队列，并加载对应采集脚本，用于采集页面访问和性能指标。实际数据展示需要在 Vercel 项目控制台中启用对应功能。
 

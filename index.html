@@ -6,7 +6,7 @@
     <title>Vercel Edge Images</title>
     <meta
       name="description"
-      content="基于 Vercel Node.js Serverless Functions 和 sharp 的动态图片处理服务，支持多格式输出和元信息查询。"
+      content="基于 Vercel Node.js Serverless Functions 和 sharp 的动态图片和视频处理服务，支持多格式输出、视频封面提取和元信息查询。"
     />
     <style>
       :root {
@@ -20,6 +20,7 @@
         --accent-dark: #065c66;
         --code: #18212f;
         --warn: #9a3412;
+        --video: #9b59b6;
       }
 
       * {
@@ -238,9 +239,18 @@
         padding: 20px;
       }
 
+      .card.video {
+        border-color: var(--video);
+        background: linear-gradient(135deg, rgba(155, 89, 182, 0.05), transparent);
+      }
+
       .card h3 {
         margin: 0 0 8px;
         font-size: 17px;
+      }
+
+      .card.video h3 {
+        color: var(--video);
       }
 
       .card p {
@@ -312,6 +322,17 @@
         background: #fff7ed;
         padding: 14px 16px;
         color: #5f2a10;
+      }
+
+      .video-badge {
+        display: inline-block;
+        margin-left: 8px;
+        padding: 2px 6px;
+        border-radius: 4px;
+        background: rgba(155, 89, 182, 0.1);
+        color: var(--video);
+        font-size: 12px;
+        font-weight: 700;
       }
 
       footer {
@@ -397,11 +418,11 @@
     <main class="shell">
       <section class="hero" aria-labelledby="page-title">
         <div>
-          <p class="eyebrow">Vercel Node.js 图片处理服务</p>
-          <h1 id="page-title">把远程图片转换为多格式输出</h1>
+          <p class="eyebrow">Vercel Node.js 媒体处理服务</p>
+          <h1 id="page-title">图片处理 + 视频封面提取</h1>
           <p class="lead">
-            这个程序接收第三方图片 URL，根据查询参数完成缩放、裁剪、填充、旋转和翻转，
-            支持输出 WebP、JPEG、PNG、AVIF 格式，也可通过 <code>format=json</code> 获取图片元信息。
+            这个程序接收第三方图片或视频 URL，根据查询参数完成缩放、裁剪、填充、旋转和翻转，
+            支持输出 WebP、JPEG、PNG、AVIF 格式，也可通过 <code>format=json</code> 获取图片或视频元信息。
           </p>
           <div class="actions">
             <a class="button" href="#usage">查看调用示例</a>
@@ -409,13 +430,13 @@
           </div>
         </div>
 
-        <div class="preview" aria-label="图片处理预览示意">
+        <div class="preview" aria-label="媒体处理预览示意">
           <div class="preview-media"></div>
           <div class="preview-bar">
             <div class="meter" aria-hidden="true"><span></span></div>
             <div class="preview-caption">
               <span>WebP/JPEG/PNG/AVIF</span>
-              <span>max 1024 x 1024</span>
+              <span>MP4/WebM 视频封面</span>
             </div>
           </div>
         </div>
@@ -443,31 +464,40 @@
           </article>
           <article class="card">
             <h3>元信息查询</h3>
-            <p>设置 <code>format=json</code> 返回图片元信息，包含宽高、格式、大小等数据。</p>
+            <p>设置 <code>format=json</code> 返回图片或视频元信息，包含宽高、格式、大小等数据。</p>
           </article>
           <article class="card">
             <h3>安全控制</h3>
-            <p>可用 <code>IMAGE_URL_ALLOWLIST</code> 限制源图域名，宽高和源图大小也有上限。</p>
+            <p>可用 <code>IMAGE_URL_ALLOWLIST</code> 限制源媒体域名，宽高和源媒体大小也有上限。</p>
           </article>
-          <article class="card">
-            <h3>失败降级</h3>
-            <p>源图已下载但处理失败时，会透传原图并附带 <code>X-Processing-Error</code>。</p>
+          <article class="card video">
+            <h3>视频封面提取</h3>
+            <p>自动检测 MP4/WebM 视频，提取首帧作为封面图，支持 Range 请求优化下载。</p>
           </article>
         </div>
       </section>
 
       <section id="usage" aria-labelledby="usage-title">
         <h2 id="usage-title">调用方式</h2>
+
         <div class="endpoint">
-          <code id="example-url"
+          <code id="example-image"
             >/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&amp;width=800&amp;height=600&amp;fit=cover</code
           >
-          <button class="copy" type="button" data-copy="#example-url">复制</button>
+          <button class="copy" type="button" data-copy="#example-image">复制</button>
         </div>
         <p>
           在页面中直接把这个地址放进 <code>&lt;img&gt;</code> 的 <code>src</code> 即可。
-          源图片地址需要先用 <code>encodeURIComponent</code> 编码。
+          源媒体地址需要先用 <code>encodeURIComponent</code> 编码。
         </p>
+
+        <div class="endpoint" style="margin-top: 16px;">
+          <code id="example-video"
+            >/api/image?url=https%3A%2F%2Fexample.com%2Fclip.mp4&amp;width=800&amp;format=webp</code
+          >
+          <button class="copy" type="button" data-copy="#example-video">复制</button>
+        </div>
+        <p>视频封面提取：自动检测 <code>.mp4</code> 或 <code>.webm</code> 文件，提取首帧作为封面。</p>
       </section>
 
       <section id="params" aria-labelledby="params-title">
@@ -483,13 +513,13 @@
           <tbody>
             <tr>
               <td><code>url</code></td>
-              <td>必填，远程图片的完整 HTTP 或 HTTPS 地址。</td>
+              <td>必填，远程图片或视频的完整 HTTP 或 HTTPS 地址。</td>
               <td>无</td>
             </tr>
             <tr>
               <td><code>width</code> / <code>height</code></td>
               <td>目标宽高，最大值会被限制为 1024。</td>
-              <td>按源图比例推断</td>
+              <td>按源媒体比例推断</td>
             </tr>
             <tr>
               <td><code>fit</code></td>
@@ -524,16 +554,42 @@
         </table>
       </section>
 
+      <section aria-label="视频功能说明">
+        <h2>视频处理 <span class="video-badge">新增</span></h2>
+        <div class="grid">
+          <article class="card video">
+            <h3>视频封面提取</h3>
+            <p>
+              自动识别 <code>.mp4</code> 和 <code>.webm</code> 文件，使用 ffmpeg 提取首帧作为封面图。
+              <br><code>/api/image?url=video.mp4&amp;width=800</code>
+            </p>
+          </article>
+          <article class="card video">
+            <h3>视频元数据查询</h3>
+            <p>
+              设置 <code>format=json</code> 获取视频分辨率、编码格式、时长等信息。
+              <br><code>/api/image?url=video.mp4&amp;format=json</code>
+            </p>
+          </article>
+          <article class="card video">
+            <h3>Range 请求优化</h3>
+            <p>
+              视频处理仅下载前 512KB 数据即可提取首帧或获取元数据，大幅节省带宽和时间。
+            </p>
+          </article>
+        </div>
+      </section>
+
       <section aria-label="运行提示">
         <div class="note">
-          本首页只负责说明程序功能；实际图片处理接口是 <code>/api/image</code>。 部署到 Vercel
-          后，根路径显示该说明页，接口路径继续按查询参数返回图片或 JSON 元信息。
+          本首页只负责说明程序功能；实际媒体处理接口是 <code>/api/image</code>。 部署到 Vercel
+          后，根路径显示该说明页，接口路径继续按查询参数返回图片、视频封面或 JSON 元信息。
         </div>
       </section>
     </main>
 
     <footer>
-      <div class="shell">Powered by Vercel Serverless Functions and sharp multi-format image encoding.</div>
+      <div class="shell">Powered by Vercel Serverless Functions, sharp multi-format image encoding, and ffmpeg video processing.</div>
     </footer>
 
     <script>
