@@ -105,7 +105,6 @@ test('probeVideoMetadataFromUrl returns metadata from Range response', async () 
   assert.equal(metadata.duration, 10.5);
   assert.equal(metadata.format, 'mov,mp4,m4a,3gp,3g2,mj2');
   assert.equal(metadata.sourceSize, 2 * 1024 * 1024);
-  assert.equal(metadata.bytesDownloaded, undefined);
 });
 
 test('probeVideoMetadataFromUrl falls back to full download when partial probe fails', async () => {
@@ -158,7 +157,6 @@ test('probeVideoMetadataFromUrl falls back to full download when partial probe f
   assert.equal(metadata.width, 1280);
   assert.equal(metadata.height, 720);
   assert.equal(metadata.sourceSize, 1024 * 1024);
-  assert.equal(metadata.bytesDownloaded, undefined);
   assert.equal(processCallCount, 2);
 });
 

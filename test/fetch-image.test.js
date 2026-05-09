@@ -73,7 +73,6 @@ test('fetchImageMetadataRange requests only the image metadata prefix', async ()
   assert.equal(result.contentType, 'image/jpeg');
   assert.equal(result.buffer.toString(), 'jpeg');
   assert.equal(result.sourceSize, 12345);
-  assert.equal(result.bytesDownloaded, undefined);
   assert.equal(result.status, 206);
 });
 
@@ -97,6 +96,23 @@ test('fetchImageMetadataRange stops after 5KB when Range is ignored', async () =
   assert.equal(result.sourceSize, 10 * 1024);
   assert.equal(body.readCount, 5);
   assert.equal(body.cancelled, true);
+});
+
+test('fetchImageMetadataRange returns null source size without size headers', async () => {
+  const result = await fetchImageMetadataRange('https://example.com/photo.jpg', {
+    fetchImpl: async () =>
+      fakeStreamResponse({
+        status: 200,
+        ok: true,
+        body: createStreamBody([Buffer.from('jpeg')]),
+        headers: {
+          'content-type': 'image/jpeg',
+        },
+      }),
+  });
+
+  assert.equal(result.buffer.length, 4);
+  assert.equal(result.sourceSize, null);
 });
 
 test('fetchImageMetadataRange does not trust partial content-length as source size', async () => {

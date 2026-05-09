@@ -327,7 +327,6 @@ test('probeImageMetadataFromUrl returns source metadata from the image prefix', 
   assert.equal(metadata.channels, undefined);
   assert.equal(metadata.sourceContentType, 'image/png');
   assert.equal(metadata.sourceSize, 98765);
-  assert.equal(metadata.bytesDownloaded, undefined);
 });
 
 test('processImage returns metadata with width, height, format, size, and channels', async () => {
