@@ -92,7 +92,7 @@ export function createImageHandler({
           duration: videoMetadata.duration,
           format: videoMetadata.format,
           sourceUrl: params.url,
-          bytesDownloaded: videoMetadata.bytesDownloaded,
+          sourceSize: videoMetadata.sourceSize ?? null,
         });
       } catch (error) {
         requestLogger.warn('image.request.video_probe_failed', {
@@ -130,7 +130,7 @@ export function createImageHandler({
           channels: imageMetadata.channels,
           sourceUrl: params.url,
           sourceContentType: imageMetadata.sourceContentType,
-          bytesDownloaded: imageMetadata.bytesDownloaded,
+          sourceSize: imageMetadata.sourceSize ?? null,
         });
       } catch (error) {
         requestLogger.warn('image.request.image_probe_failed', {

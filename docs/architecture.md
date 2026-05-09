@@ -46,6 +46,7 @@ lib/process-image.js
 - Rejects non-image content types.
 - Rejects source payloads above 50 MB to keep memory bounded.
 - Fetches only the first 5KB for image metadata requests, even when the source ignores Range.
+- Parses source file size from `Content-Range`, or from `Content-Length` only for full responses.
 
 `lib/url-allowlist.js`
 
@@ -64,6 +65,7 @@ lib/process-image.js
 
 - Lazily imports `sharp`.
 - Probes source image metadata from the first 5KB for `format=json` image requests.
+- Returns `sourceSize` in metadata responses without downloading the full source solely for size.
 - Builds transform responses with a single native sharp pipeline.
 - Applies rotate, flip/flop, native resize, and WebP output in one chain.
 - Uses `effort: 0` for fastest WebP encoding.

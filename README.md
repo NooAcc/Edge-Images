@@ -7,7 +7,7 @@
 - `GET /api/image` 接收类似 Cloudflare Images 风格的查询参数。
 - 默认输出 WebP，质量为 `85`。
 - 支持多格式输出：`webp`、`jpeg`、`png`、`avif`。
-- 支持 `format=json` 返回图片或视频元信息，图片元信息只读取源文件前 5KB。
+- 支持 `format=json` 返回图片或视频元信息，并通过响应头解析源文件实际大小。
 - 输出尺寸始终限制在 `1024 x 1024` 以内。
 - 源媒体下载超时时间为 20 秒。
 - 图片处理失败时会降级返回已下载的原图。
@@ -262,7 +262,7 @@ IMAGE_URL_ALLOWLIST=example.com trusted-cdn.com
 /api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&format=json
 ```
 
-图片元信息查询采用 Range 请求优化，只读取源图前 5KB 并解析源图元数据，不执行缩放或格式转换。
+图片元信息查询采用 Range 请求优化，只读取源图前 5KB 并解析源图元数据，不执行缩放或格式转换。`sourceSize` 表示源文件总字节数；如果源站没有返回可靠的大小响应头，则为 `null`。
 
 图片 JSON 响应示例：
 
@@ -274,7 +274,7 @@ IMAGE_URL_ALLOWLIST=example.com trusted-cdn.com
   "channels": 3,
   "sourceUrl": "https://example.com/photo.jpg",
   "sourceContentType": "image/jpeg",
-  "bytesDownloaded": 5120
+  "sourceSize": 2483921
 }
 ```
 
@@ -294,7 +294,7 @@ IMAGE_URL_ALLOWLIST=example.com trusted-cdn.com
   "duration": 10.5,
   "format": "mov,mp4,m4a,3gp,3g2,mj2",
   "sourceUrl": "https://example.com/clip.mp4",
-  "bytesDownloaded": 524288
+  "sourceSize": 8349123
 }
 ```
 
@@ -352,9 +352,9 @@ IMAGE_DEBUG_LOGS=1 npm run vercel:dev
 
 ## 实现说明
 
-`sharp` 用于图片解码、几何变换和质量可控的多格式编码。普通图片处理会通过单一 sharp 管线输出指定格式；图片元信息查询会通过 Range 请求读取前 5KB 并仅执行 `metadata()`。
+`sharp` 用于图片解码、几何变换和质量可控的多格式编码。普通图片处理会通过单一 sharp 管线输出指定格式；图片元信息查询会通过 Range 请求读取前 5KB 并仅执行 `metadata()`，源文件大小优先从 `Content-Range` 解析。
 
-`ffmpeg` 用于视频帧提取和元数据探测。视频处理采用 Range 请求优化，仅下载前 512KB 即可提取首帧或获取元数据，无需完整下载视频文件。
+`ffmpeg` 用于视频帧提取和元数据探测。视频处理采用 Range 请求优化，优先下载前 512KB 提取首帧或获取元数据，源文件大小同样优先从 `Content-Range` 解析。
 
 支持的输出格式及特性：
 

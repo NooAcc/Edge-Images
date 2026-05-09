@@ -33,8 +33,12 @@ function createMockFetch(responses = []) {
         ok: response.rangeStatus === 200,
         headers: {
           get: (name) => {
-            if (name === 'content-type') return response.rangeContentType || 'video/mp4';
-            if (name === 'content-length') return String(response.rangeBody?.length || 0);
+            const normalized = name.toLowerCase();
+            if (normalized === 'content-type') return response.rangeContentType || 'video/mp4';
+            if (normalized === 'content-length') {
+              return String(getByteLength(response.rangeBody));
+            }
+            if (normalized === 'content-range') return response.rangeContentRange || null;
             return null;
           },
         },
@@ -47,14 +51,20 @@ function createMockFetch(responses = []) {
       ok: (response.status || 200) >= 200 && (response.status || 200) < 300,
       headers: {
         get: (name) => {
-          if (name === 'content-type') return response.contentType || 'video/mp4';
-          if (name === 'content-length') return String(response.body?.length || 0);
+          const normalized = name.toLowerCase();
+          if (normalized === 'content-type') return response.contentType || 'video/mp4';
+          if (normalized === 'content-length') return String(getByteLength(response.body));
+          if (normalized === 'content-range') return response.contentRange || null;
           return null;
         },
       },
       arrayBuffer: async () => response.body || new ArrayBuffer(0),
     };
   };
+}
+
+function getByteLength(value) {
+  return value?.byteLength ?? value?.length ?? 0;
 }
 
 test('probeVideoMetadataFromUrl returns metadata from Range response', async () => {
@@ -81,6 +91,7 @@ test('probeVideoMetadataFromUrl returns metadata from Range response', async () 
         rangeStatus: 206,
         rangeContentType: 'video/mp4',
         rangeBody: new ArrayBuffer(512 * 1024),
+        rangeContentRange: `bytes 0-${512 * 1024 - 1}/${2 * 1024 * 1024}`,
       },
     ]),
     runProcess: createMockRunProcess({
@@ -93,7 +104,8 @@ test('probeVideoMetadataFromUrl returns metadata from Range response', async () 
   assert.equal(metadata.codec, 'h264');
   assert.equal(metadata.duration, 10.5);
   assert.equal(metadata.format, 'mov,mp4,m4a,3gp,3g2,mj2');
-  assert.equal(metadata.bytesDownloaded, 512 * 1024);
+  assert.equal(metadata.sourceSize, 2 * 1024 * 1024);
+  assert.equal(metadata.bytesDownloaded, undefined);
 });
 
 test('probeVideoMetadataFromUrl falls back to full download when partial probe fails', async () => {
@@ -132,6 +144,7 @@ test('probeVideoMetadataFromUrl falls back to full download when partial probe f
         rangeStatus: 206,
         rangeContentType: 'video/webm',
         rangeBody: new ArrayBuffer(512 * 1024),
+        rangeContentRange: `bytes 0-${512 * 1024 - 1}/${1024 * 1024}`,
       },
       {
         status: 200,
@@ -144,8 +157,45 @@ test('probeVideoMetadataFromUrl falls back to full download when partial probe f
 
   assert.equal(metadata.width, 1280);
   assert.equal(metadata.height, 720);
-  assert.equal(metadata.bytesDownloaded, 1024 * 1024);
+  assert.equal(metadata.sourceSize, 1024 * 1024);
+  assert.equal(metadata.bytesDownloaded, undefined);
   assert.equal(processCallCount, 2);
+});
+
+test('probeVideoMetadataFromUrl uses full source size when Range is ignored', async () => {
+  const probeData = {
+    streams: [
+      {
+        codec_type: 'video',
+        codec_name: 'vp9',
+        width: 640,
+        height: 360,
+      },
+    ],
+    format: {
+      duration: '8.4',
+      format_name: 'matroska,webm',
+    },
+  };
+
+  const metadata = await probeVideoMetadataFromUrl('https://example.com/clip.webm', {
+    ffprobePath: '/usr/bin/ffprobe',
+    fetchImpl: createMockFetch([
+      {
+        rangeStatus: 200,
+        rangeContentType: 'video/webm',
+        rangeBody: new ArrayBuffer(768 * 1024),
+      },
+    ]),
+    runProcess: createMockRunProcess({
+      stdout: Buffer.from(JSON.stringify(probeData)),
+    }),
+  });
+
+  assert.equal(metadata.width, 640);
+  assert.equal(metadata.height, 360);
+  assert.equal(metadata.codec, 'vp9');
+  assert.equal(metadata.sourceSize, 768 * 1024);
 });
 
 test('extractVideoFrameRange returns frame from Range response', async () => {

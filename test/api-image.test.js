@@ -219,7 +219,7 @@ test('api handler returns json metadata for format=json', async () => {
         format: 'jpeg',
         channels: 3,
         sourceContentType: 'image/jpeg',
-        bytesDownloaded: 5120,
+        sourceSize: 123456,
       };
     },
   });
@@ -248,7 +248,8 @@ test('api handler returns json metadata for format=json', async () => {
   assert.equal(body.channels, 3);
   assert.equal(body.sourceUrl, 'https://example.com/photo.jpg');
   assert.equal(body.sourceContentType, 'image/jpeg');
-  assert.equal(body.bytesDownloaded, 5120);
+  assert.equal(body.sourceSize, 123456);
+  assert.equal(body.bytesDownloaded, undefined);
   assert.equal(body.size, undefined);
   assert.equal(body.sourceBytes, undefined);
   assert.equal(fetchImageCalled, false);
@@ -408,7 +409,7 @@ test('api handler returns video metadata for format=json with video source', asy
         codec: 'h264',
         duration: 10.5,
         format: 'mov,mp4,m4a,3gp,3g2,mj2',
-        bytesDownloaded: 524288,
+        sourceSize: 987654,
       };
     },
   });
@@ -435,7 +436,8 @@ test('api handler returns video metadata for format=json with video source', asy
   assert.equal(body.duration, 10.5);
   assert.equal(body.format, 'mov,mp4,m4a,3gp,3g2,mj2');
   assert.equal(body.sourceUrl, 'https://example.com/clip.mp4');
-  assert.equal(body.bytesDownloaded, 524288);
+  assert.equal(body.sourceSize, 987654);
+  assert.equal(body.bytesDownloaded, undefined);
 });
 
 test('api handler returns 502 when video frame extraction fails', async () => {

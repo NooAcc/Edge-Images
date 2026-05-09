@@ -314,6 +314,7 @@ test('probeImageMetadataFromUrl returns source metadata from the image prefix', 
         headers: {
           'content-type': 'image/png',
           'content-length': '5120',
+          'content-range': `bytes 0-${imageBytes.length - 1}/98765`,
         },
       });
     },
@@ -325,7 +326,8 @@ test('probeImageMetadataFromUrl returns source metadata from the image prefix', 
   assert.equal(metadata.format, 'png');
   assert.equal(metadata.channels, undefined);
   assert.equal(metadata.sourceContentType, 'image/png');
-  assert.equal(metadata.bytesDownloaded, imageBytes.length);
+  assert.equal(metadata.sourceSize, 98765);
+  assert.equal(metadata.bytesDownloaded, undefined);
 });
 
 test('processImage returns metadata with width, height, format, size, and channels', async () => {

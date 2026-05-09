@@ -63,6 +63,7 @@ test('fetchImageMetadataRange requests only the image metadata prefix', async ()
         headers: {
           'content-type': 'image/jpeg',
           'content-length': '4',
+          'content-range': 'bytes 0-3/12345',
         },
       });
     },
@@ -71,7 +72,8 @@ test('fetchImageMetadataRange requests only the image metadata prefix', async ()
   assert.equal(requestOptions.headers.Range, 'bytes=0-5119');
   assert.equal(result.contentType, 'image/jpeg');
   assert.equal(result.buffer.toString(), 'jpeg');
-  assert.equal(result.bytesDownloaded, 4);
+  assert.equal(result.sourceSize, 12345);
+  assert.equal(result.bytesDownloaded, undefined);
   assert.equal(result.status, 206);
 });
 
@@ -92,9 +94,27 @@ test('fetchImageMetadataRange stops after 5KB when Range is ignored', async () =
   });
 
   assert.equal(result.buffer.length, DEFAULT_IMAGE_METADATA_BYTES);
-  assert.equal(result.bytesDownloaded, DEFAULT_IMAGE_METADATA_BYTES);
+  assert.equal(result.sourceSize, 10 * 1024);
   assert.equal(body.readCount, 5);
   assert.equal(body.cancelled, true);
+});
+
+test('fetchImageMetadataRange does not trust partial content-length as source size', async () => {
+  const result = await fetchImageMetadataRange('https://example.com/photo.jpg', {
+    fetchImpl: async () =>
+      fakeStreamResponse({
+        status: 206,
+        ok: true,
+        body: createStreamBody([Buffer.from('jpeg')]),
+        headers: {
+          'content-type': 'image/jpeg',
+          'content-length': '4',
+        },
+      }),
+  });
+
+  assert.equal(result.buffer.length, 4);
+  assert.equal(result.sourceSize, null);
 });
 
 test('fetchImage rejects non-2xx responses', async () => {

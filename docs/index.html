@@ -317,7 +317,10 @@
 &gt;</code></pre>
 
         <h3>获取图片元信息</h3>
-        <p>图片元信息查询只读取源图前 5KB，并直接解析源图元数据。</p>
+        <p>
+          图片元信息查询只读取源图前 5KB，并直接解析源图元数据。<code>sourceSize</code>
+          表示源文件总字节数；源站没有返回可靠大小响应头时为 <code>null</code>。
+        </p>
         <div class="endpoint">
           <code id="image-meta"
             >/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&amp;format=json</code
@@ -334,7 +337,7 @@
   "channels": 3,
   "sourceUrl": "https://example.com/photo.jpg",
   "sourceContentType": "image/jpeg",
-  "bytesDownloaded": 5120
+  "sourceSize": 2483921
 }</div>
 
         <h3>常用场景</h3>
@@ -395,7 +398,7 @@
   "duration": 10.5,
   "format": "mov,mp4,m4a,3gp,3g2,mj2",
   "sourceUrl": "https://example.com/clip.mp4",
-  "bytesDownloaded": 524288
+  "sourceSize": 8349123
 }</div>
 
         <h3>视频元信息字段说明</h3>
@@ -428,8 +431,8 @@
               <td>容器格式</td>
             </tr>
             <tr>
-              <td><code>bytesDownloaded</code></td>
-              <td>下载的字节数（Range 请求优化）</td>
+              <td><code>sourceSize</code></td>
+              <td>源文件总字节数；源站没有提供可靠大小响应头时为 <code>null</code></td>
             </tr>
           </tbody>
         </table>
