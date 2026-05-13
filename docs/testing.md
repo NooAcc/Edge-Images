@@ -15,7 +15,8 @@ The test scripts use a single-process runner (`node test/run-tests.js`) because 
 Unit tests:
 
 - `test/parse-params.test.js`
-  - Required `url`.
+  - Required encoded source URL path segment.
+  - Legacy `url` query parameter rejection.
   - Configured URL allowlist enforcement.
   - Dimension clamping.
   - Quality clamping.
@@ -78,7 +79,7 @@ npm run vercel:dev
 Then open:
 
 ```text
-http://localhost:3000/api/image?url=<encoded-image-url>&width=800&height=600&fit=cover
+http://localhost:3000/api/image/<encoded-image-url>?width=800&height=600&fit=cover
 ```
 
 Expected:

@@ -305,14 +305,14 @@
         <h3>快速调用</h3>
         <div class="endpoint">
           <code id="image-example"
-            >/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&amp;width=800&amp;height=600&amp;fit=cover</code
+            >/api/image/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=800&amp;height=600&amp;fit=cover</code
           >
           <button class="copy" type="button" data-copy="#image-example">复制</button>
         </div>
 
         <h3>HTML 示例</h3>
         <pre><code>&lt;img
-  src="/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&amp;width=800&amp;height=600&amp;fit=cover"
+  src="/api/image/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=800&amp;height=600&amp;fit=cover"
   alt="示例图片"
 &gt;</code></pre>
 
@@ -322,9 +322,7 @@
           表示源文件总字节数；源站没有返回可靠大小响应头时为 <code>null</code>。
         </p>
         <div class="endpoint">
-          <code id="image-meta"
-            >/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&amp;format=json</code
-          >
+          <code id="image-meta">/api/image/https%3A%2F%2Fexample.com%2Fphoto.jpg?format=json</code>
           <button class="copy" type="button" data-copy="#image-meta">复制</button>
         </div>
 
@@ -370,22 +368,20 @@
         <h3>提取视频封面</h3>
         <div class="endpoint">
           <code id="video-cover"
-            >/api/image?url=https%3A%2F%2Fexample.com%2Fclip.mp4&amp;width=800&amp;height=600&amp;fit=cover</code
+            >/api/image/https%3A%2F%2Fexample.com%2Fclip.mp4?width=800&amp;height=600&amp;fit=cover</code
           >
           <button class="copy" type="button" data-copy="#video-cover">复制</button>
         </div>
 
         <h3>HTML 示例</h3>
         <pre><code>&lt;img
-  src="/api/image?url=https%3A%2F%2Fexample.com%2Fclip.mp4&amp;width=800&amp;height=600&amp;fit=cover"
+  src="/api/image/https%3A%2F%2Fexample.com%2Fclip.mp4?width=800&amp;height=600&amp;fit=cover"
   alt="视频封面"
 &gt;</code></pre>
 
         <h3>获取视频元信息</h3>
         <div class="endpoint">
-          <code id="video-meta"
-            >/api/image?url=https%3A%2F%2Fexample.com%2Fclip.mp4&amp;format=json</code
-          >
+          <code id="video-meta">/api/image/https%3A%2F%2Fexample.com%2Fclip.mp4?format=json</code>
           <button class="copy" type="button" data-copy="#video-meta">复制</button>
         </div>
 
@@ -442,9 +438,9 @@
         <h2 id="api-title"><span class="section-icon">⚙️</span>API 参考</h2>
 
         <h3>接口地址</h3>
-        <pre><code>GET /api/image</code></pre>
+        <pre><code>GET /api/image/&lt;encoded-source-url&gt;</code></pre>
 
-        <h3>必需参数</h3>
+        <h3>必需路径参数</h3>
         <table>
           <thead>
             <tr>
@@ -455,14 +451,14 @@
           </thead>
           <tbody>
             <tr>
-              <td><code>url</code></td>
-              <td>必填，完整 HTTP 或 HTTPS 媒体地址，需要 URL 编码。</td>
+              <td><code>encoded-source-url</code></td>
+              <td>完整 HTTP 或 HTTPS 媒体地址，需要使用 <code>encodeURIComponent</code> 编码。</td>
               <td>无</td>
             </tr>
           </tbody>
         </table>
 
-        <h3>可选参数</h3>
+        <h3>可选查询参数</h3>
         <table>
           <thead>
             <tr>

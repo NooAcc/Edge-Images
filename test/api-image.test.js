@@ -24,13 +24,9 @@ test('api handler returns processed output with cache headers and metadata', asy
   const res = createMockResponse();
 
   await handler(
-    {
-      method: 'GET',
-      query: {
-        url: 'https://example.com/photo.jpg',
-        width: '800',
-      },
-    },
+    createImageRequest('https://example.com/photo.jpg', {
+      width: '800',
+    }),
     res,
   );
 
@@ -45,15 +41,45 @@ test('api handler returns processed output with cache headers and metadata', asy
   assert.equal(res.body.toString(), 'webp:800');
 });
 
-test('api handler returns 400 for missing url', async () => {
+test('api handler returns 400 for missing source URL path segment', async () => {
   const handler = createImageHandler();
   const res = createMockResponse();
 
-  await handler({ method: 'GET', query: {} }, res);
+  await handler({ method: 'GET', url: '/api/image' }, res);
 
   assert.equal(res.statusCode, 400);
   assert.deepEqual(JSON.parse(res.body.toString()), {
-    error: 'Missing required parameter: url',
+    error: 'Missing required source URL path segment',
+  });
+});
+
+test('api handler rejects legacy url query parameter', async () => {
+  const handler = createImageHandler();
+  const res = createMockResponse();
+
+  await handler(
+    {
+      method: 'GET',
+      url: '/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg',
+    },
+    res,
+  );
+
+  assert.equal(res.statusCode, 400);
+  assert.deepEqual(JSON.parse(res.body.toString()), {
+    error: 'url query parameter is no longer supported; encode the source URL in the path',
+  });
+});
+
+test('api handler returns 400 for malformed source URL path encoding', async () => {
+  const handler = createImageHandler();
+  const res = createMockResponse();
+
+  await handler({ method: 'GET', url: '/api/image/%E0%A4%A?format=json' }, res);
+
+  assert.equal(res.statusCode, 400);
+  assert.deepEqual(JSON.parse(res.body.toString()), {
+    error: 'source URL path segment must be valid percent-encoding',
   });
 });
 
@@ -62,11 +88,13 @@ test('api handler returns 400 when source host is not allowlisted', async () => 
   const res = createMockResponse();
 
   await handler(
-    {
-      method: 'GET',
-      query: { url: 'https://blocked.example.com/photo.jpg' },
-      env: { IMAGE_URL_ALLOWLIST: 'images.example.com' },
-    },
+    createImageRequest(
+      'https://blocked.example.com/photo.jpg',
+      {},
+      {
+        env: { IMAGE_URL_ALLOWLIST: 'images.example.com' },
+      },
+    ),
     res,
   );
 
@@ -92,7 +120,7 @@ test('api handler returns 502 when source fetch fails', async () => {
   });
   const res = createMockResponse();
 
-  await handler({ method: 'GET', query: { url: 'https://example.com/photo.jpg' } }, res);
+  await handler(createImageRequest('https://example.com/photo.jpg'), res);
 
   assert.equal(res.statusCode, 502);
   assert.match(res.body.toString(), /Bad Gateway/);
@@ -112,19 +140,19 @@ test('api handler logs source fetch failures when debug logging is enabled', asy
   const res = createMockResponse();
 
   await handler(
-    {
-      method: 'GET',
-      url: '/api/image',
-      headers: { 'x-request-id': 'req_debug' },
-      env: { IMAGE_DEBUG_LOGS: '1' },
-      query: {
-        url: 'https://example.com/photo.avif',
+    createImageRequest(
+      'https://example.com/photo.avif',
+      {
         width: '420',
         height: '296',
         fit: 'cover',
         quality: '82',
       },
-    },
+      {
+        headers: { 'x-request-id': 'req_debug' },
+        env: { IMAGE_DEBUG_LOGS: '1' },
+      },
+    ),
     res,
   );
 
@@ -153,7 +181,7 @@ test('api handler falls back to the original image when processing fails', async
   });
   const res = createMockResponse();
 
-  await handler({ method: 'GET', query: { url: 'https://example.com/photo.png' } }, res);
+  await handler(createImageRequest('https://example.com/photo.png'), res);
 
   assert.equal(res.statusCode, 200);
   assert.equal(res.headers['content-type'], 'image/png');
@@ -181,14 +209,10 @@ test('api handler returns jpeg content type for format=jpeg', async () => {
   const res = createMockResponse();
 
   await handler(
-    {
-      method: 'GET',
-      query: {
-        url: 'https://example.com/photo.png',
-        width: '600',
-        format: 'jpeg',
-      },
-    },
+    createImageRequest('https://example.com/photo.png', {
+      width: '600',
+      format: 'jpeg',
+    }),
     res,
   );
 
@@ -226,15 +250,11 @@ test('api handler returns json metadata for format=json', async () => {
   const res = createMockResponse();
 
   await handler(
-    {
-      method: 'GET',
-      query: {
-        url: 'https://example.com/photo.jpg',
-        width: '800',
-        height: '600',
-        format: 'json',
-      },
-    },
+    createImageRequest('https://example.com/photo.jpg', {
+      width: '800',
+      height: '600',
+      format: 'json',
+    }),
     res,
   );
 
@@ -252,6 +272,72 @@ test('api handler returns json metadata for format=json', async () => {
   });
   assert.equal(fetchImageCalled, false);
   assert.equal(processImageCalled, false);
+});
+
+test('api handler preserves encoded source URL query values after one path decode', async () => {
+  const sourceUrl = 'https://example.com/photo.jpg?token=a%2Fb&name=A%2BB';
+  const handler = createImageHandler({
+    fetchImageImpl: async (url) => {
+      assert.equal(url, sourceUrl);
+      return {
+        buffer: Buffer.from('source'),
+        contentType: 'image/jpeg',
+      };
+    },
+    processImageImpl: async () => ({
+      buffer: Buffer.from('webp-output'),
+      metadata: {
+        width: 200,
+        height: 100,
+        format: 'webp',
+        size: 4321,
+        channels: 3,
+      },
+    }),
+  });
+  const res = createMockResponse();
+
+  await handler(createImageRequest(sourceUrl, { width: '200' }), res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.toString(), 'webp-output');
+});
+
+test('api handler accepts internal rewrite source query parameter', async () => {
+  const handler = createImageHandler({
+    fetchImageImpl: async (url) => {
+      assert.equal(url, 'https://example.com/rewrite.jpg');
+      return {
+        buffer: Buffer.from('source'),
+        contentType: 'image/jpeg',
+      };
+    },
+    processImageImpl: async (_buffer, params) => ({
+      buffer: Buffer.from(`webp:${params.width}`),
+      metadata: {
+        width: params.width,
+        height: 180,
+        format: 'webp',
+        size: 2345,
+        channels: 3,
+      },
+    }),
+  });
+  const res = createMockResponse();
+
+  await handler(
+    {
+      method: 'GET',
+      query: {
+        source: encodeURIComponent('https://example.com/rewrite.jpg'),
+        width: '320',
+      },
+    },
+    res,
+  );
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.toString(), 'webp:320');
 });
 
 test('api handler returns png content type for format=png', async () => {
@@ -274,14 +360,10 @@ test('api handler returns png content type for format=png', async () => {
   const res = createMockResponse();
 
   await handler(
-    {
-      method: 'GET',
-      query: {
-        url: 'https://example.com/photo.jpg',
-        width: '400',
-        format: 'png',
-      },
-    },
+    createImageRequest('https://example.com/photo.jpg', {
+      width: '400',
+      format: 'png',
+    }),
     res,
   );
 
@@ -311,14 +393,10 @@ test('api handler returns avif content type for format=avif', async () => {
   const res = createMockResponse();
 
   await handler(
-    {
-      method: 'GET',
-      query: {
-        url: 'https://example.com/photo.jpg',
-        width: '300',
-        format: 'avif',
-      },
-    },
+    createImageRequest('https://example.com/photo.jpg', {
+      width: '300',
+      format: 'avif',
+    }),
     res,
   );
 
@@ -351,13 +429,9 @@ test('api handler extracts video frame for video/mp4 source', async () => {
   const res = createMockResponse();
 
   await handler(
-    {
-      method: 'GET',
-      query: {
-        url: 'https://example.com/clip.mp4',
-        width: '800',
-      },
-    },
+    createImageRequest('https://example.com/clip.mp4', {
+      width: '800',
+    }),
     res,
   );
 
@@ -383,15 +457,7 @@ test('api handler extracts video frame for video/webm source', async () => {
   });
   const res = createMockResponse();
 
-  await handler(
-    {
-      method: 'GET',
-      query: {
-        url: 'https://example.com/clip.webm',
-      },
-    },
-    res,
-  );
+  await handler(createImageRequest('https://example.com/clip.webm'), res);
 
   assert.equal(res.statusCode, 200);
   assert.equal(res.headers['content-type'], 'image/webp');
@@ -414,13 +480,9 @@ test('api handler returns video metadata for format=json with video source', asy
   const res = createMockResponse();
 
   await handler(
-    {
-      method: 'GET',
-      query: {
-        url: 'https://example.com/clip.mp4',
-        format: 'json',
-      },
-    },
+    createImageRequest('https://example.com/clip.mp4', {
+      format: 'json',
+    }),
     res,
   );
 
@@ -447,13 +509,9 @@ test('api handler returns 502 when video frame extraction fails', async () => {
   const res = createMockResponse();
 
   await handler(
-    {
-      method: 'GET',
-      query: {
-        url: 'https://example.com/bad.mp4',
-        width: '400',
-      },
-    },
+    createImageRequest('https://example.com/bad.mp4', {
+      width: '400',
+    }),
     res,
   );
 
@@ -470,19 +528,26 @@ test('api handler returns 502 when video probe fails for format=json', async () 
   const res = createMockResponse();
 
   await handler(
-    {
-      method: 'GET',
-      query: {
-        url: 'https://example.com/bad.webm',
-        format: 'json',
-      },
-    },
+    createImageRequest('https://example.com/bad.webm', {
+      format: 'json',
+    }),
     res,
   );
 
   assert.equal(res.statusCode, 502);
   assert.match(res.body.toString(), /Bad Gateway/);
 });
+
+function createImageRequest(sourceUrl, query = {}, overrides = {}) {
+  const searchParams = new URLSearchParams(query);
+  const queryString = searchParams.toString();
+
+  return {
+    method: 'GET',
+    url: `/api/image/${encodeURIComponent(sourceUrl)}${queryString ? `?${queryString}` : ''}`,
+    ...overrides,
+  };
+}
 
 function createMockResponse() {
   return {

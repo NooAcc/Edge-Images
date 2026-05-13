@@ -5,7 +5,7 @@ import { createImageHandler } from '../api/image.js';
 import { processImage } from '../lib/process-image.js';
 import { decodeOutput, createFakeSharp, makeImageBytes } from './helpers/fake-sharp.js';
 
-test('system: GET /api/image cover scenario reaches the expected output size', async () => {
+test('system: GET /api/image/<encoded-source-url> cover scenario reaches the expected output size', async () => {
   const handler = createImageHandler({
     fetchImageImpl: async () => ({
       buffer: makeImageBytes(2048, 1536),
@@ -19,15 +19,11 @@ test('system: GET /api/image cover scenario reaches the expected output size', a
   const res = createMockResponse();
 
   await handler(
-    {
-      method: 'GET',
-      query: {
-        url: 'https://example.com/photo.jpg',
-        width: '800',
-        height: '600',
-        fit: 'cover',
-      },
-    },
+    createImageRequest('https://example.com/photo.jpg', {
+      width: '800',
+      height: '600',
+      fit: 'cover',
+    }),
     res,
   );
 
@@ -52,13 +48,23 @@ test('system: corrupt downloaded image is returned as original fallback', async 
   });
   const res = createMockResponse();
 
-  await handler({ method: 'GET', query: { url: 'https://example.com/broken.jpg' } }, res);
+  await handler(createImageRequest('https://example.com/broken.jpg'), res);
 
   assert.equal(res.statusCode, 200);
   assert.equal(res.headers['content-type'], 'image/jpeg');
   assert.match(res.headers['x-processing-error'], /Unexpected token/);
   assert.equal(res.body.toString(), 'not-json-image');
 });
+
+function createImageRequest(sourceUrl, query = {}) {
+  const searchParams = new URLSearchParams(query);
+  const queryString = searchParams.toString();
+
+  return {
+    method: 'GET',
+    url: `/api/image/${encodeURIComponent(sourceUrl)}${queryString ? `?${queryString}` : ''}`,
+  };
+}
 
 function createMockResponse() {
   return {

@@ -10,16 +10,13 @@ Always URL-encode the source image URL:
 
 ```js
 const src = encodeURIComponent('https://example.com/photo.jpg');
-const imageUrl = `/api/image?url=${src}&width=800&height=600&fit=cover`;
+const imageUrl = `/api/image/${src}?width=800&height=600&fit=cover`;
 ```
 
 Use it in HTML:
 
 ```html
-<img
-  src="/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&width=800&height=600&fit=cover"
-  alt=""
-/>
+<img src="/api/image/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=800&height=600&fit=cover" alt="" />
 ```
 
 ## Source URL Allowlist
@@ -45,25 +42,25 @@ If `IMAGE_URL_ALLOWLIST` is empty or unset, the allowlist is disabled and the se
 Responsive card image:
 
 ```text
-/api/image?url=<encoded-url>&width=640&height=360&fit=cover
+/api/image/<encoded-url>?width=640&height=360&fit=cover
 ```
 
 Avatar without upscaling:
 
 ```text
-/api/image?url=<encoded-url>&width=256&height=256&fit=inside
+/api/image/<encoded-url>?width=256&height=256&fit=inside
 ```
 
 Product image with visible full object:
 
 ```text
-/api/image?url=<encoded-url>&width=800&height=800&fit=contain&background=FFFFFF
+/api/image/<encoded-url>?width=800&height=800&fit=contain&background=FFFFFF
 ```
 
 Lower bandwidth preview:
 
 ```text
-/api/image?url=<encoded-url>&width=480&quality=50
+/api/image/<encoded-url>?width=480&quality=50
 ```
 
 ## Parameter Details
@@ -114,7 +111,7 @@ The API returns:
 Cache-Control: public, max-age=86400, s-maxage=604800
 ```
 
-This lets browsers cache for one day and Vercel's CDN cache for seven days. Since the query string is part of the URL, different parameter combinations create separate cache entries.
+This lets browsers cache for one day and Vercel's CDN cache for seven days. Since the encoded source path and query string are part of the URL, different sources and parameter combinations create separate cache entries.
 
 ## Fallback Behavior
 

@@ -1,6 +1,6 @@
 import { fetchImage } from '../lib/fetch-image.js';
 import { createImageLogger } from '../lib/image-logger.js';
-import { ParamError, parseParams } from '../lib/parse-params.js';
+import { ParamError, getQueryValue, parseParams } from '../lib/parse-params.js';
 import {
   FORMAT_CONTENT_TYPES,
   probeImageMetadataFromUrl,
@@ -10,6 +10,7 @@ import { extractVideoFrameRange, probeVideoMetadataFromUrl } from '../lib/proces
 
 export const CACHE_CONTROL = 'public, max-age=31536000, immutable';
 export const PROCESSOR_NAME = 'vercel-node-image';
+const IMAGE_ROUTE_PREFIX = '/api/image';
 const VIDEO_EXTENSIONS = /\.(mp4|webm)(\?.*)?$/i;
 
 export function createImageHandler({
@@ -42,9 +43,10 @@ export function createImageHandler({
       return sendJson(res, 405, { error: 'Method Not Allowed' }, { Allow: 'GET' });
     }
 
+    const query = extractQuery(req);
     let params;
     try {
-      params = parseParams(extractQuery(req), { env: req.env });
+      params = parseParams(extractSourceUrl(req, query), query, { env: req.env });
     } catch (error) {
       if (error instanceof ParamError) {
         requestLogger.warn('image.request.param_error', {
@@ -264,6 +266,47 @@ function extractQuery(req) {
   const host = req.headers?.host || 'localhost';
   const url = new URL(req.url || '/', `http://${host}`);
   return url.searchParams;
+}
+
+function extractSourceUrl(req, query) {
+  const encodedPathSource = getEncodedPathSource(req);
+  if (encodedPathSource !== undefined) {
+    return decodePathSource(encodedPathSource);
+  }
+
+  const rewriteSource = getQueryValue(query, 'source');
+  if (rewriteSource === undefined || rewriteSource === '') {
+    return rewriteSource;
+  }
+
+  return normalizeRewriteSource(rewriteSource);
+}
+
+function getEncodedPathSource(req) {
+  const pathname = getRequestPath(req);
+  const sourcePrefix = `${IMAGE_ROUTE_PREFIX}/`;
+  if (!pathname.startsWith(sourcePrefix)) {
+    return undefined;
+  }
+
+  return pathname.slice(sourcePrefix.length);
+}
+
+function decodePathSource(encodedPathSource) {
+  try {
+    return decodeURIComponent(encodedPathSource);
+  } catch {
+    throw new ParamError('source URL path segment must be valid percent-encoding');
+  }
+}
+
+function normalizeRewriteSource(source) {
+  const value = String(source);
+  if (/^https?:\/\//i.test(value)) {
+    return value;
+  }
+
+  return decodePathSource(value);
 }
 
 function sendJson(res, statusCode, body, headers = {}) {

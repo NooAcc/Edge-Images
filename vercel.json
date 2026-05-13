@@ -10,6 +10,12 @@
       ]
     }
   ],
+  "rewrites": [
+    {
+      "source": "/api/image/:source*",
+      "destination": "/api/image?source=:source*"
+    }
+  ],
   "functions": {
     "api/image.js": {
       "maxDuration": 40

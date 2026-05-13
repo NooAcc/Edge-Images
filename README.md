@@ -4,7 +4,7 @@
 
 本实现遵循 `Vercel Edge Images.md` 中的项目需求：
 
-- `GET /api/image` 接收类似 Cloudflare Images 风格的查询参数。
+- `GET /api/image/<encoded-source-url>` 接收路径式源媒体 URL 和类似 Cloudflare Images 风格的查询参数。
 - 默认输出 WebP，质量为 `85`。
 - 支持多格式输出：`webp`、`jpeg`、`png`、`avif`。
 - 支持 `format=json` 返回图片或视频元信息，并通过响应头解析源文件实际大小。
@@ -39,13 +39,13 @@ IMAGE_DEBUG_LOGS=1
 
 ```text
 # 图片处理
-http://localhost:3000/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&width=800&height=600&fit=cover
+http://localhost:3000/api/image/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=800&height=600&fit=cover
 
 # 视频封面提取
-http://localhost:3000/api/image?url=https%3A%2F%2Fexample.com%2Fclip.mp4&width=800&format=webp
+http://localhost:3000/api/image/https%3A%2F%2Fexample.com%2Fclip.mp4?width=800&format=webp
 
 # 视频元数据查询
-http://localhost:3000/api/image?url=https%3A%2F%2Fexample.com%2Fclip.mp4&format=json
+http://localhost:3000/api/image/https%3A%2F%2Fexample.com%2Fclip.mp4?format=json
 ```
 
 ## 部署到 Vercel
@@ -122,13 +122,13 @@ https://<your-project>.vercel.app/
 
 ```text
 # 图片处理
-https://<your-project>.vercel.app/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&width=800&height=600&fit=cover
+https://<your-project>.vercel.app/api/image/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=800&height=600&fit=cover
 
 # 视频封面
-https://<your-project>.vercel.app/api/image?url=https%3A%2F%2Fexample.com%2Fclip.mp4&width=800&format=webp
+https://<your-project>.vercel.app/api/image/https%3A%2F%2Fexample.com%2Fclip.mp4?width=800&format=webp
 
 # 视频元数据
-https://<your-project>.vercel.app/api/image?url=https%3A%2F%2Fexample.com%2Fclip.mp4&format=json
+https://<your-project>.vercel.app/api/image/https%3A%2F%2Fexample.com%2Fclip.mp4?format=json
 ```
 
 预期响应头：
@@ -148,14 +148,16 @@ X-Image-Size: <bytes>
 接口：
 
 ```text
-GET /api/image
+GET /api/image/<encoded-source-url>
 ```
 
-必需查询参数：
+完整源媒体 URL 必须使用 `encodeURIComponent` 编码后放入路径：
 
-| 参数  | 说明                                                                        |
-| ----- | --------------------------------------------------------------------------- |
-| `url` | 绝对 `http` 或 `https` 图片或视频地址。需要使用 `encodeURIComponent` 编码。 |
+必需路径参数：
+
+| 参数                 | 说明                                            |
+| -------------------- | ----------------------------------------------- |
+| `encoded-source-url` | 已编码的绝对 `http` 或 `https` 图片或视频地址。 |
 
 ## 源媒体域名白名单
 
@@ -201,43 +203,43 @@ IMAGE_URL_ALLOWLIST=example.com trusted-cdn.com
 覆盖裁剪：
 
 ```text
-/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&width=800&height=600&fit=cover
+/api/image/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=800&height=600&fit=cover
 ```
 
 仅按宽度等比缩放：
 
 ```text
-/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&width=400
+/api/image/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=400
 ```
 
 红色背景的正方形填充图：
 
 ```text
-/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&width=500&height=500&fit=contain&background=FF0000
+/api/image/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=500&height=500&fit=contain&background=FF0000
 ```
 
 旋转并翻转：
 
 ```text
-/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&rotate=90&flip=h
+/api/image/https%3A%2F%2Fexample.com%2Fphoto.jpg?rotate=90&flip=h
 ```
 
 输出 JPEG 格式：
 
 ```text
-/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&width=800&format=jpeg
+/api/image/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=800&format=jpeg
 ```
 
 输出 PNG 格式：
 
 ```text
-/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&width=800&format=png
+/api/image/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=800&format=png
 ```
 
 输出 AVIF 格式：
 
 ```text
-/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&width=800&format=avif
+/api/image/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=800&format=avif
 ```
 
 ### 视频封面提取
@@ -245,13 +247,13 @@ IMAGE_URL_ALLOWLIST=example.com trusted-cdn.com
 提取 MP4 视频首帧作为封面：
 
 ```text
-/api/image?url=https%3A%2F%2Fexample.com%2Fclip.mp4&width=800&height=600&fit=cover
+/api/image/https%3A%2F%2Fexample.com%2Fclip.mp4?width=800&height=600&fit=cover
 ```
 
 提取 WebM 视频首帧并输出 JPEG：
 
 ```text
-/api/image?url=https%3A%2F%2Fexample.com%2Fclip.webm&width=1024&format=jpeg
+/api/image/https%3A%2F%2Fexample.com%2Fclip.webm?width=1024&format=jpeg
 ```
 
 ### 元信息查询
@@ -259,7 +261,7 @@ IMAGE_URL_ALLOWLIST=example.com trusted-cdn.com
 获取图片元信息：
 
 ```text
-/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg&format=json
+/api/image/https%3A%2F%2Fexample.com%2Fphoto.jpg?format=json
 ```
 
 图片元信息查询采用 Range 请求优化，只读取源图前 5KB 并解析源图元数据，不执行缩放或格式转换。`sourceSize` 表示源文件总字节数；如果源站没有返回可靠的大小响应头，则为 `null`。
@@ -281,7 +283,7 @@ IMAGE_URL_ALLOWLIST=example.com trusted-cdn.com
 获取视频元信息：
 
 ```text
-/api/image?url=https%3A%2F%2Fexample.com%2Fclip.mp4&format=json
+/api/image/https%3A%2F%2Fexample.com%2Fclip.mp4?format=json
 ```
 
 视频 JSON 响应示例：

@@ -7,5 +7,5 @@ yarn-error.log*
 pnpm-debug.log*
 .vercel-dev.*.log
 .DS_Store
-
+.trae
 .vercel

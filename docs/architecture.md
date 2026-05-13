@@ -30,8 +30,9 @@ lib/process-image.js
 
 `lib/parse-params.js`
 
-- Normalizes `req.query` values.
-- Requires an absolute `http` or `https` `url`.
+- Normalizes transform query values.
+- Requires an absolute `http` or `https` source URL supplied by the `/api/image/<encoded-source-url>` path.
+- Rejects the legacy `url` query parameter.
 - Enforces `IMAGE_URL_ALLOWLIST` when configured.
 - Clamps `width` and `height` to `1024`.
 - Clamps `quality` to `1..100`.
@@ -81,7 +82,7 @@ lib/process-image.js
 ## Request Flow
 
 ```text
-GET /api/image
+GET /api/image/<encoded-source-url>
   -> parseParams()
        -> URL allowlist check
   -> fetchImage()
@@ -95,7 +96,7 @@ GET /api/image
 Image metadata flow:
 
 ```text
-GET /api/image?format=json
+GET /api/image/<encoded-source-url>?format=json
   -> parseParams()
        -> URL allowlist check
   -> fetchImageMetadataRange()
@@ -150,10 +151,16 @@ Unexpected early error -> 500 JSON
 
 The project does not pin a Node.js version in `package.json`; Vercel uses the project default Node.js runtime.
 
-`vercel.json` configures only function duration:
+`vercel.json` configures the path-style API rewrite and function duration:
 
 ```json
 {
+  "rewrites": [
+    {
+      "source": "/api/image/:source*",
+      "destination": "/api/image?source=:source*"
+    }
+  ],
   "functions": {
     "api/image.js": {
       "maxDuration": 40
