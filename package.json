@@ -5,6 +5,7 @@
   "type": "module",
   "description": "Vercel Node.js image and video processing API powered by sharp and ffmpeg.",
   "scripts": {
+    "start": "node server.js",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint .",
