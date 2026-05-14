@@ -56,3 +56,18 @@ jobs:
             USE_SYSTEM_FFMPEG=${{ matrix.ffmpeg }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  update-description:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Update Docker Hub description
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ secrets.DOCKERHUB_USERNAME }}/edge-image
+          readme-filepath: ./DOCKERHUB.md
