@@ -79,7 +79,7 @@ npm run vercel:dev
 Then open:
 
 ```text
-http://localhost:3000/api/image/<encoded-image-url>?width=800&height=600&fit=cover
+http://localhost:3000/api/media/<encoded-image-url>?width=800&height=600&fit=cover
 ```
 
 Expected:

@@ -10,13 +10,13 @@ Always URL-encode the source image URL:
 
 ```js
 const src = encodeURIComponent('https://example.com/photo.jpg');
-const imageUrl = `/api/image/${src}?width=800&height=600&fit=cover`;
+const imageUrl = `/api/media/${src}?width=800&height=600&fit=cover`;
 ```
 
 Use it in HTML:
 
 ```html
-<img src="/api/image/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=800&height=600&fit=cover" alt="" />
+<img src="/api/media/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=800&height=600&fit=cover" alt="" />
 ```
 
 ## Source URL Allowlist
@@ -42,25 +42,25 @@ If `IMAGE_URL_ALLOWLIST` is empty or unset, the allowlist is disabled and the se
 Responsive card image:
 
 ```text
-/api/image/<encoded-url>?width=640&height=360&fit=cover
+/api/media/<encoded-url>?width=640&height=360&fit=cover
 ```
 
 Avatar without upscaling:
 
 ```text
-/api/image/<encoded-url>?width=256&height=256&fit=inside
+/api/media/<encoded-url>?width=256&height=256&fit=inside
 ```
 
 Product image with visible full object:
 
 ```text
-/api/image/<encoded-url>?width=800&height=800&fit=contain&background=FFFFFF
+/api/media/<encoded-url>?width=800&height=800&fit=contain&background=FFFFFF
 ```
 
 Lower bandwidth preview:
 
 ```text
-/api/image/<encoded-url>?width=480&quality=50
+/api/media/<encoded-url>?width=480&quality=50
 ```
 
 ## Parameter Details

@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { createImageHandler } from '../api/image.js';
+import { createImageHandler } from '../api/media.js';
 import { processImage } from '../lib/process-image.js';
 import { decodeOutput, createFakeSharp, makeImageBytes } from './helpers/fake-sharp.js';
 
-test('system: GET /api/image/<encoded-source-url> cover scenario reaches the expected output size', async () => {
+test('system: GET /api/media/<encoded-source-url> cover scenario reaches the expected output size', async () => {
   const handler = createImageHandler({
     fetchImageImpl: async () => ({
       buffer: makeImageBytes(2048, 1536),
@@ -62,7 +62,7 @@ function createImageRequest(sourceUrl, query = {}) {
 
   return {
     method: 'GET',
-    url: `/api/image/${encodeURIComponent(sourceUrl)}${queryString ? `?${queryString}` : ''}`,
+    url: `/api/media/${encodeURIComponent(sourceUrl)}${queryString ? `?${queryString}` : ''}`,
   };
 }
 

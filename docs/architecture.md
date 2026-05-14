@@ -13,14 +13,14 @@ The service is a small Vercel Node.js API that behaves like a dynamic image CDN:
 ## Module Map
 
 ```text
-api/image.js
+api/media.js
 lib/parse-params.js
 lib/fetch-image.js
 lib/image-logger.js
 lib/process-image.js
 ```
 
-`api/image.js`
+`api/media.js`
 
 - Vercel function entrypoint.
 - Validates `GET` requests.
@@ -31,7 +31,7 @@ lib/process-image.js
 `lib/parse-params.js`
 
 - Normalizes transform query values.
-- Requires an absolute `http` or `https` source URL supplied by the `/api/image/<encoded-source-url>` path.
+- Requires an absolute `http` or `https` source URL supplied by the `/api/media/<encoded-source-url>` path.
 - Rejects the legacy `url` query parameter.
 - Enforces `IMAGE_URL_ALLOWLIST` when configured.
 - Clamps `width` and `height` to `1024`.
@@ -82,7 +82,7 @@ lib/process-image.js
 ## Request Flow
 
 ```text
-GET /api/image/<encoded-source-url>
+GET /api/media/<encoded-source-url>
   -> parseParams()
        -> URL allowlist check
   -> fetchImage()
@@ -96,7 +96,7 @@ GET /api/image/<encoded-source-url>
 Image metadata flow:
 
 ```text
-GET /api/image/<encoded-source-url>?format=json
+GET /api/media/<encoded-source-url>?format=json
   -> parseParams()
        -> URL allowlist check
   -> fetchImageMetadataRange()
@@ -157,12 +157,12 @@ The project does not pin a Node.js version in `package.json`; Vercel uses the pr
 {
   "rewrites": [
     {
-      "source": "/api/image/:source*",
-      "destination": "/api/image?source=:source*"
+      "source": "/api/media/:source*",
+      "destination": "/api/media?source=:source*"
     }
   ],
   "functions": {
-    "api/image.js": {
+    "api/media.js": {
       "maxDuration": 40
     }
   }

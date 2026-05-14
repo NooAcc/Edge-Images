@@ -296,7 +296,7 @@
     <main class="shell">
       <h1>使用文档</h1>
       <p class="lead">
-        通过 <code>/api/image</code> 接口处理远程图片和视频，支持缩放、裁剪、格式转换和元信息查询。
+        通过 <code>/api/media</code> 接口处理远程图片和视频，支持缩放、裁剪、格式转换和元信息查询。
       </p>
 
       <section id="images" aria-labelledby="images-title">
@@ -305,14 +305,14 @@
         <h3>快速调用</h3>
         <div class="endpoint">
           <code id="image-example"
-            >/api/image/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=800&amp;height=600&amp;fit=cover</code
+            >/api/media/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=800&amp;height=600&amp;fit=cover</code
           >
           <button class="copy" type="button" data-copy="#image-example">复制</button>
         </div>
 
         <h3>HTML 示例</h3>
         <pre><code>&lt;img
-  src="/api/image/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=800&amp;height=600&amp;fit=cover"
+  src="/api/media/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=800&amp;height=600&amp;fit=cover"
   alt="示例图片"
 &gt;</code></pre>
 
@@ -322,7 +322,7 @@
           表示源文件总字节数；源站没有返回可靠大小响应头时为 <code>null</code>。
         </p>
         <div class="endpoint">
-          <code id="image-meta">/api/image/https%3A%2F%2Fexample.com%2Fphoto.jpg?format=json</code>
+          <code id="image-meta">/api/media/https%3A%2F%2Fexample.com%2Fphoto.jpg?format=json</code>
           <button class="copy" type="button" data-copy="#image-meta">复制</button>
         </div>
 
@@ -368,20 +368,20 @@
         <h3>提取视频封面</h3>
         <div class="endpoint">
           <code id="video-cover"
-            >/api/image/https%3A%2F%2Fexample.com%2Fclip.mp4?width=800&amp;height=600&amp;fit=cover</code
+            >/api/media/https%3A%2F%2Fexample.com%2Fclip.mp4?width=800&amp;height=600&amp;fit=cover</code
           >
           <button class="copy" type="button" data-copy="#video-cover">复制</button>
         </div>
 
         <h3>HTML 示例</h3>
         <pre><code>&lt;img
-  src="/api/image/https%3A%2F%2Fexample.com%2Fclip.mp4?width=800&amp;height=600&amp;fit=cover"
+  src="/api/media/https%3A%2F%2Fexample.com%2Fclip.mp4?width=800&amp;height=600&amp;fit=cover"
   alt="视频封面"
 &gt;</code></pre>
 
         <h3>获取视频元信息</h3>
         <div class="endpoint">
-          <code id="video-meta">/api/image/https%3A%2F%2Fexample.com%2Fclip.mp4?format=json</code>
+          <code id="video-meta">/api/media/https%3A%2F%2Fexample.com%2Fclip.mp4?format=json</code>
           <button class="copy" type="button" data-copy="#video-meta">复制</button>
         </div>
 
@@ -438,7 +438,7 @@
         <h2 id="api-title"><span class="section-icon">⚙️</span>API 参考</h2>
 
         <h3>接口地址</h3>
-        <pre><code>GET /api/image/&lt;encoded-source-url&gt;</code></pre>
+        <pre><code>GET /api/media/&lt;encoded-source-url&gt;</code></pre>
 
         <h3>必需路径参数</h3>
         <table>

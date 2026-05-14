@@ -20,7 +20,7 @@ docker run -p 3000:3000 edge-image/edge-image
 测试图片处理：
 
 ```shell
-curl "http://localhost:3000/api/image/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=800&height=600&fit=cover" -o output.webp
+curl "http://localhost:3000/api/media/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=800&height=600&fit=cover" -o output.webp
 ```
 
 ## 环境变量
@@ -48,7 +48,7 @@ docker build --build-arg USE_SYSTEM_FFMPEG=false -t edge-image .
 ## API 用法
 
 ```text
-GET /api/image/<encoded-source-url>?<parameters>
+GET /api/media/<encoded-source-url>?<parameters>
 ```
 
 源 URL 需经 `encodeURIComponent` 编码后放入路径。
@@ -67,16 +67,16 @@ GET /api/image/<encoded-source-url>?<parameters>
 
 ```text
 # 覆盖裁剪
-/api/image/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=800&height=600&fit=cover
+/api/media/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=800&height=600&fit=cover
 
 # 红色背景填充
-/api/image/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=500&height=500&fit=contain&background=FF0000
+/api/media/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=500&height=500&fit=contain&background=FF0000
 
 # 视频封面
-/api/image/https%3A%2F%2Fexample.com%2Fclip.mp4?width=800&format=webp
+/api/media/https%3A%2F%2Fexample.com%2Fclip.mp4?width=800&format=webp
 
 # 元信息查询
-/api/image/https%3A%2F%2Fexample.com%2Fphoto.jpg?format=json
+/api/media/https%3A%2F%2Fexample.com%2Fphoto.jpg?format=json
 ```
 
 ## 域名白名单

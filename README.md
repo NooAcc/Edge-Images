@@ -24,7 +24,7 @@ npm run vercel:dev
 ## API
 
 ```text
-GET /api/image/<encoded-source-url>
+GET /api/media/<encoded-source-url>
 ```
 
 `encoded-source-url` 是经 `encodeURIComponent` 编码的完整 `http` 或 `https` 图片/视频地址。
@@ -46,28 +46,28 @@ GET /api/image/<encoded-source-url>
 
 ```text
 # 覆盖裁剪
-/api/image/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=800&height=600&fit=cover
+/api/media/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=800&height=600&fit=cover
 
 # 按宽度等比缩放
-/api/image/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=400
+/api/media/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=400
 
 # 红色背景正方形填充
-/api/image/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=500&height=500&fit=contain&background=FF0000
+/api/media/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=500&height=500&fit=contain&background=FF0000
 
 # 旋转并翻转
-/api/image/https%3A%2F%2Fexample.com%2Fphoto.jpg?rotate=90&flip=h
+/api/media/https%3A%2F%2Fexample.com%2Fphoto.jpg?rotate=90&flip=h
 
 # 输出 JPEG
-/api/image/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=800&format=jpeg
+/api/media/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=800&format=jpeg
 
 # 视频封面提取
-/api/image/https%3A%2F%2Fexample.com%2Fclip.mp4?width=800&height=600&fit=cover
+/api/media/https%3A%2F%2Fexample.com%2Fclip.mp4?width=800&height=600&fit=cover
 
 # 图片元信息
-/api/image/https%3A%2F%2Fexample.com%2Fphoto.jpg?format=json
+/api/media/https%3A%2F%2Fexample.com%2Fphoto.jpg?format=json
 
 # 视频元信息
-/api/image/https%3A%2F%2Fexample.com%2Fclip.mp4?format=json
+/api/media/https%3A%2F%2Fexample.com%2Fclip.mp4?format=json
 ```
 
 ### 元信息响应

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { CACHE_CONTROL, PROCESSOR_NAME, createImageHandler } from '../api/image.js';
+import { CACHE_CONTROL, PROCESSOR_NAME, createImageHandler } from '../api/media.js';
 import { createCaptureSink } from './helpers/capture-logs.js';
 
 test('api handler returns processed output with cache headers and metadata', async () => {
@@ -45,7 +45,7 @@ test('api handler returns 400 for missing source URL path segment', async () => 
   const handler = createImageHandler();
   const res = createMockResponse();
 
-  await handler({ method: 'GET', url: '/api/image' }, res);
+  await handler({ method: 'GET', url: '/api/media' }, res);
 
   assert.equal(res.statusCode, 400);
   assert.deepEqual(JSON.parse(res.body.toString()), {
@@ -60,7 +60,7 @@ test('api handler rejects legacy url query parameter', async () => {
   await handler(
     {
       method: 'GET',
-      url: '/api/image?url=https%3A%2F%2Fexample.com%2Fphoto.jpg',
+      url: '/api/media?url=https%3A%2F%2Fexample.com%2Fphoto.jpg',
     },
     res,
   );
@@ -75,7 +75,7 @@ test('api handler returns 400 for malformed source URL path encoding', async () 
   const handler = createImageHandler();
   const res = createMockResponse();
 
-  await handler({ method: 'GET', url: '/api/image/%E0%A4%A?format=json' }, res);
+  await handler({ method: 'GET', url: '/api/media/%E0%A4%A?format=json' }, res);
 
   assert.equal(res.statusCode, 400);
   assert.deepEqual(JSON.parse(res.body.toString()), {
@@ -544,7 +544,7 @@ function createImageRequest(sourceUrl, query = {}, overrides = {}) {
 
   return {
     method: 'GET',
-    url: `/api/image/${encodeURIComponent(sourceUrl)}${queryString ? `?${queryString}` : ''}`,
+    url: `/api/media/${encodeURIComponent(sourceUrl)}${queryString ? `?${queryString}` : ''}`,
     ...overrides,
   };
 }

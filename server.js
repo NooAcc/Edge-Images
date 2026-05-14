@@ -15,7 +15,7 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  if (pathname.startsWith('/api/image')) {
+  if (pathname.startsWith('/api/media')) {
     return imageHandler(req, res);
   }
 

@@ -30,7 +30,7 @@ test('createImageLogger writes structured records when enabled', () => {
     env: { IMAGE_DEBUG_LOGS: '1' },
     sink: capture.sink,
     requestId: 'req_enabled',
-    base: { route: '/api/image' },
+    base: { route: '/api/media' },
   }).child({ sourceHost: 'example.com' });
 
   logger.warn('image.test.event', {
@@ -42,7 +42,7 @@ test('createImageLogger writes structured records when enabled', () => {
   assert.equal(record.level, 'warn');
   assert.equal(record.event, 'image.test.event');
   assert.equal(record.requestId, 'req_enabled');
-  assert.equal(record.route, '/api/image');
+  assert.equal(record.route, '/api/media');
   assert.equal(record.sourceHost, 'example.com');
   assert.equal(record.errorName, 'Error');
   assert.equal(record.errorMessage, 'sample failure');
