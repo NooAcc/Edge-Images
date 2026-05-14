@@ -1,8 +1,19 @@
 import { createServer } from 'node:http';
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { createImageHandler } from './lib/handler.js';
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
 const imageHandler = createImageHandler();
+
+let indexHtml;
+try {
+  indexHtml = await readFile(join(__dirname, 'index.html'));
+} catch {
+  // index.html not found, will serve 404 for root
+}
 
 const server = createServer(async (req, res) => {
   req.env = process.env;
@@ -17,6 +28,12 @@ const server = createServer(async (req, res) => {
 
   if (pathname.startsWith('/api/media')) {
     return imageHandler(req, res);
+  }
+
+  if ((pathname === '/' || pathname === '/index.html') && indexHtml) {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(indexHtml);
+    return;
   }
 
   res.writeHead(404, { 'Content-Type': 'application/json' });
