@@ -1,8 +1,8 @@
-# Vercel Edge Images
+# Edge Image
 
-一个运行在 Vercel Node.js Serverless Functions 上的图片和视频处理服务。它会下载远程图片或视频，按参数执行受控的缩放、裁剪、填充等处理，并返回优化后的输出（支持 WebP、JPEG、PNG、AVIF）。
+一个 Node.js 图片和视频处理服务。它会下载远程图片或视频，按参数执行受控的缩放、裁剪、填充等处理，并返回优化后的输出（支持 WebP、JPEG、PNG、AVIF）。
 
-本实现遵循 `Vercel Edge Images.md` 中的项目需求：
+主要特性：
 
 - `GET /api/image/<encoded-source-url>` 接收路径式源媒体 URL 和类似 Cloudflare Images 风格的查询参数。
 - 默认输出 WebP，质量为 `85`。
@@ -47,6 +47,46 @@ http://localhost:3000/api/image/https%3A%2F%2Fexample.com%2Fclip.mp4?width=800&f
 # 视频元数据查询
 http://localhost:3000/api/image/https%3A%2F%2Fexample.com%2Fclip.mp4?format=json
 ```
+
+## Docker 部署
+
+### 构建镜像
+
+默认使用容器内置的系统 ffmpeg：
+
+```shell
+docker build -t edge-image .
+```
+
+使用 npm 包的 ffmpeg-static（更轻量，不安装系统 ffmpeg）：
+
+```shell
+docker build --build-arg USE_SYSTEM_FFMPEG=false -t edge-image .
+```
+
+### 运行容器
+
+```shell
+docker run -p 3000:3000 \
+  -e IMAGE_URL_ALLOWLIST=example.com \
+  edge-image
+```
+
+### 切换 ffmpeg 来源
+
+运行时可以通过环境变量切换 ffmpeg 来源：
+
+```shell
+# 使用系统 ffmpeg（默认，需要构建时安装）
+docker run -p 3000:3000 -e USE_SYSTEM_FFMPEG=true edge-image
+
+# 使用 npm 包的 ffmpeg-static
+docker run -p 3000:3000 -e USE_SYSTEM_FFMPEG=false edge-image
+```
+
+**说明：**
+- `USE_SYSTEM_FFMPEG=true`（默认）：优先使用系统 ffmpeg，回退到 ffmpeg-static
+- `USE_SYSTEM_FFMPEG=false`：强制使用 ffmpeg-static npm 包
 
 ## 部署到 Vercel
 
@@ -136,7 +176,7 @@ https://<your-project>.vercel.app/api/image/https%3A%2F%2Fexample.com%2Fclip.mp4
 ```text
 Content-Type: image/webp
 Cache-Control: public, max-age=31536000, immutable
-X-Processor: vercel-node-image
+X-Processor: edge-image
 X-Image-Width: 800
 X-Image-Height: 600
 X-Image-Format: webp
@@ -307,7 +347,7 @@ IMAGE_URL_ALLOWLIST=example.com trusted-cdn.com
 ```text
 Content-Type: image/webp
 Cache-Control: public, max-age=31536000, immutable
-X-Processor: vercel-node-image
+X-Processor: edge-image
 X-Image-Width: <width>
 X-Image-Height: <height>
 X-Image-Format: <format>
@@ -319,7 +359,7 @@ X-Image-Size: <bytes>
 ```text
 Content-Type: <original source content-type>
 Cache-Control: public, max-age=31536000, immutable
-X-Processor: vercel-node-image
+X-Processor: edge-image
 X-Processing-Error: <short error message>
 ```
 
@@ -328,7 +368,7 @@ JSON 元信息响应：
 ```text
 Content-Type: application/json; charset=utf-8
 Cache-Control: public, max-age=31536000, immutable
-X-Processor: vercel-node-image
+X-Processor: edge-image
 ```
 
 ## 错误响应

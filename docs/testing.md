@@ -86,5 +86,5 @@ Expected:
 
 - Status `200`.
 - `Content-Type: image/webp`.
-- `X-Processor: vercel-node-image`.
+- `X-Processor: edge-image`.
 - Output dimensions no larger than `1024 x 1024`.

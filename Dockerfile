@@ -1,6 +1,8 @@
 FROM node:22-alpine
 
-RUN apk add --no-cache ffmpeg
+ARG USE_SYSTEM_FFMPEG=true
+
+RUN if [ "$USE_SYSTEM_FFMPEG" = "true" ]; then apk add --no-cache ffmpeg; fi
 
 WORKDIR /app
 
@@ -9,8 +11,7 @@ RUN npm ci --omit=dev
 
 COPY . .
 
-ENV FFMPEG_PATH=/usr/bin/ffmpeg
-ENV FFPROBE_PATH=/usr/bin/ffprobe
+ENV USE_SYSTEM_FFMPEG=${USE_SYSTEM_FFMPEG}
 ENV PORT=3000
 
 EXPOSE 3000

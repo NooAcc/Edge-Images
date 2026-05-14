@@ -1,9 +1,9 @@
 {
-  "name": "vercel-edge-images",
+  "name": "edge-image",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Vercel Node.js image and video processing API powered by sharp and ffmpeg.",
+  "description": "Node.js image and video processing API powered by sharp and ffmpeg.",
   "scripts": {
     "start": "node server.js",
     "format": "prettier --write .",
