@@ -50,6 +50,97 @@ test('fetchImage sends browser-like image request headers', async () => {
   assert.equal(requestOptions.headers.Referer, 'https://example.com/');
 });
 
+test('fetchImage retries retryable source statuses before succeeding', async () => {
+  const capture = createCaptureSink();
+  const logger = createImageLogger({
+    env: { IMAGE_DEBUG_LOGS: '1' },
+    sink: capture.sink,
+    requestId: 'req_fetch_retry_success',
+  });
+  const delays = [];
+  let calls = 0;
+
+  const result = await fetchImage('https://example.com/photo.avif', {
+    logger,
+    sleep: async (delayMs) => delays.push(delayMs),
+    fetchImpl: async () => {
+      calls++;
+      if (calls <= 3) {
+        return fakeResponse({
+          status: 403,
+          ok: false,
+          headers: {
+            'content-type': 'image/avif',
+            'content-length': '0',
+          },
+        });
+      }
+
+      return fakeResponse({
+        body: Buffer.from('avif'),
+        headers: {
+          'content-type': 'image/avif',
+          'content-length': '4',
+        },
+      });
+    },
+  });
+
+  const retries = capture.records().filter((record) => record.event === 'image.source.fetch_retry');
+
+  assert.equal(calls, 4);
+  assert.deepEqual(delays, [500, 1000, 2000]);
+  assert.equal(result.buffer.toString(), 'avif');
+  assert.deepEqual(
+    retries.map((record) => [record.attempt, record.maxAttempts, record.status, record.delayMs]),
+    [
+      [1, 4, 403, 500],
+      [2, 4, 403, 1000],
+      [3, 4, 403, 2000],
+    ],
+  );
+});
+
+test('fetchImage logs retry exhaustion after repeated retryable statuses', async () => {
+  const capture = createCaptureSink();
+  const logger = createImageLogger({
+    env: { IMAGE_DEBUG_LOGS: '1' },
+    sink: capture.sink,
+    requestId: 'req_fetch_retry_exhausted',
+  });
+  let calls = 0;
+
+  await assert.rejects(
+    () =>
+      fetchImage('https://example.com/photo.avif', {
+        logger,
+        sleep: async () => {},
+        fetchImpl: async () => {
+          calls++;
+          return fakeResponse({
+            status: 403,
+            ok: false,
+            headers: {
+              'content-type': 'image/avif',
+              'content-length': '0',
+            },
+          });
+        },
+      }),
+    /HTTP 403/,
+  );
+
+  const records = capture.records();
+  const retries = records.filter((record) => record.event === 'image.source.fetch_retry');
+  const exhausted = records.find((record) => record.event === 'image.source.fetch_retry_exhausted');
+
+  assert.equal(calls, 4);
+  assert.equal(retries.length, 3);
+  assert.equal(exhausted.attempt, 4);
+  assert.equal(exhausted.maxAttempts, 4);
+  assert.equal(exhausted.status, 403);
+});
+
 test('fetchImageMetadataRange requests only the image metadata prefix', async () => {
   let requestOptions;
 
@@ -74,6 +165,59 @@ test('fetchImageMetadataRange requests only the image metadata prefix', async ()
   assert.equal(result.buffer.toString(), 'jpeg');
   assert.equal(result.sourceSize, 12345);
   assert.equal(result.status, 206);
+});
+
+test('fetchImageMetadataRange retries retryable statuses and preserves Range', async () => {
+  const capture = createCaptureSink();
+  const logger = createImageLogger({
+    env: { IMAGE_DEBUG_LOGS: '1' },
+    sink: capture.sink,
+    requestId: 'req_metadata_retry_success',
+  });
+  const requestOptions = [];
+  let calls = 0;
+
+  const result = await fetchImageMetadataRange('https://example.com/photo.jpg', {
+    logger,
+    sleep: async () => {},
+    fetchImpl: async (_url, options) => {
+      calls++;
+      requestOptions.push(options);
+
+      if (calls === 1) {
+        return fakeStreamResponse({
+          status: 403,
+          ok: false,
+          body: createStreamBody([]),
+          headers: {
+            'content-type': 'image/jpeg',
+            'content-length': '0',
+          },
+        });
+      }
+
+      return fakeStreamResponse({
+        status: 206,
+        ok: true,
+        body: createStreamBody([Buffer.from('jpeg')]),
+        headers: {
+          'content-type': 'image/jpeg',
+          'content-length': '4',
+          'content-range': 'bytes 0-3/12345',
+        },
+      });
+    },
+  });
+
+  const retry = capture.records().find((record) => record.event === 'image.metadata.fetch_retry');
+
+  assert.equal(calls, 2);
+  assert.equal(requestOptions[0].headers.Range, 'bytes=0-5119');
+  assert.equal(requestOptions[1].headers.Range, 'bytes=0-5119');
+  assert.equal(retry.attempt, 1);
+  assert.equal(retry.status, 403);
+  assert.equal(result.buffer.toString(), 'jpeg');
+  assert.equal(result.sourceSize, 12345);
 });
 
 test('fetchImageMetadataRange stops after 5KB when Range is ignored', async () => {
@@ -134,13 +278,20 @@ test('fetchImageMetadataRange does not trust partial content-length as source si
 });
 
 test('fetchImage rejects non-2xx responses', async () => {
+  let calls = 0;
+
   await assert.rejects(
     () =>
       fetchImage('https://example.com/missing.jpg', {
-        fetchImpl: async () => fakeResponse({ status: 404, ok: false }),
+        fetchImpl: async () => {
+          calls++;
+          return fakeResponse({ status: 404, ok: false });
+        },
       }),
     ImageFetchError,
   );
+
+  assert.equal(calls, 1);
 });
 
 test('fetchImage logs source response details before rejecting bad status', async () => {
@@ -155,6 +306,7 @@ test('fetchImage logs source response details before rejecting bad status', asyn
     () =>
       fetchImage('https://example.com/photo.avif', {
         logger,
+        retryCount: 0,
         fetchImpl: async () =>
           fakeResponse({
             status: 403,
@@ -179,17 +331,23 @@ test('fetchImage logs source response details before rejecting bad status', asyn
 });
 
 test('fetchImage rejects non-image content', async () => {
+  let calls = 0;
+
   await assert.rejects(
     () =>
       fetchImage('https://example.com/index.html', {
-        fetchImpl: async () =>
-          fakeResponse({
+        fetchImpl: async () => {
+          calls++;
+          return fakeResponse({
             body: Buffer.from('<html></html>'),
             headers: { 'content-type': 'text/html' },
-          }),
+          });
+        },
       }),
     /did not return an image/,
   );
+
+  assert.equal(calls, 1);
 });
 
 test('fetchImage rejects video content types', async () => {
@@ -210,21 +368,58 @@ test('fetchImage rejects video content types', async () => {
 });
 
 test('fetchImage enforces source size limits', async () => {
+  let calls = 0;
+
   await assert.rejects(
     () =>
       fetchImage('https://example.com/huge.jpg', {
         maxBytes: 3,
-        fetchImpl: async () =>
-          fakeResponse({
+        fetchImpl: async () => {
+          calls++;
+          return fakeResponse({
             body: Buffer.from('1234'),
             headers: {
               'content-type': 'image/jpeg',
               'content-length': '4',
             },
-          }),
+          });
+        },
       }),
     /exceeds/,
   );
+
+  assert.equal(calls, 1);
+});
+
+test('fetchImage retries response body timeouts until exhausted', async () => {
+  let calls = 0;
+
+  await assert.rejects(
+    () =>
+      fetchImage('https://example.com/slow-body.jpg', {
+        sleep: async () => {},
+        fetchImpl: async () => {
+          calls++;
+          return {
+            status: 200,
+            ok: true,
+            headers: {
+              get(name) {
+                return name.toLowerCase() === 'content-type' ? 'image/jpeg' : undefined;
+              },
+            },
+            async arrayBuffer() {
+              const error = new Error('aborted');
+              error.name = 'AbortError';
+              throw error;
+            },
+          };
+        },
+      }),
+    /timed out/,
+  );
+
+  assert.equal(calls, 4);
 });
 
 test('fetchImage aborts slow downloads', async () => {
