@@ -288,6 +288,7 @@
           <a href="/">首页</a>
           <a href="#images" class="active">图片处理</a>
           <a href="#videos">视频处理</a>
+          <a href="#batch">批量处理</a>
           <a href="#api">API 参考</a>
         </nav>
       </div>
@@ -434,8 +435,207 @@
         </table>
       </section>
 
+      <section id="batch" aria-labelledby="batch-title">
+        <h2 id="batch-title"><span class="section-icon">📦</span>批量处理</h2>
+
+        <div class="panel video">
+          <p>
+            一次请求处理多张图片，全部完成后返回结果。仅 <code>PLATFORM=huggingface</code> 可用，最多 20 张图片/批次。
+          </p>
+        </div>
+
+        <h3>快速调用</h3>
+        <div class="endpoint">
+          <code id="batch-example">POST /api/batch</code>
+          <button class="copy" type="button" data-copy="#batch-curl">复制</button>
+        </div>
+        <pre id="batch-curl" style="margin-top: 8px;">curl -X POST /api/batch \
+  -H "Content-Type: application/json" \
+  -d '[
+    {"uuid":"img-001","url":"https://example.com/a.jpg","params":{"width":200,"height":200}},
+    {"uuid":"img-002","url":"https://example.com/b.png","params":{"format":"json"}}
+  ]'</pre>
+
+        <h3>请求头</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>请求头</th>
+              <th>说明</th>
+              <th>示例</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>Content-Type</code></td>
+              <td>必填。指定请求体格式。</td>
+              <td><code>application/json</code></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>请求体</h3>
+        <p>JSON 数组，每个元素包含：</p>
+        <table>
+          <thead>
+            <tr>
+              <th>字段</th>
+              <th>类型</th>
+              <th>必填</th>
+              <th>说明</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>uuid</code></td>
+              <td>string</td>
+              <td>是</td>
+              <td>唯一标识符，用于关联响应结果</td>
+            </tr>
+            <tr>
+              <td><code>url</code></td>
+              <td>string</td>
+              <td>是</td>
+              <td>图片地址（http/https）</td>
+            </tr>
+            <tr>
+              <td><code>params</code></td>
+              <td>object</td>
+              <td>否</td>
+              <td>处理参数，支持 <code>width</code>、<code>height</code>、<code>quality</code>、<code>fit</code>、<code>format</code>、<code>rotate</code>、<code>flip</code>、<code>background</code></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>请求示例</h3>
+        <div class="json-preview">POST /api/batch HTTP/1.1
+Host: your-domain.com
+Content-Type: application/json
+
+[
+  {
+    "uuid": "img-001",
+    "url": "https://example.com/photo.jpg",
+    "params": { "width": 200, "height": 200, "format": "webp" }
+  },
+  {
+    "uuid": "img-002",
+    "url": "https://example.com/logo.png",
+    "params": { "width": 100 }
+  },
+  {
+    "uuid": "meta-001",
+    "url": "https://example.com/banner.jpg",
+    "params": { "format": "json" }
+  }
+]</div>
+
+        <h3>响应体</h3>
+        <p>JSON 对象，以 <code>uuid</code> 为键。每个结果包含：</p>
+        <table>
+          <thead>
+            <tr>
+              <th>字段</th>
+              <th>类型</th>
+              <th>说明</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>success</code></td>
+              <td>boolean</td>
+              <td>是否处理成功</td>
+            </tr>
+            <tr>
+              <td><code>data</code></td>
+              <td>object</td>
+              <td>成功时返回。普通图片包含 <code>base64</code> 字段；<code>format=json</code> 包含元数据</td>
+            </tr>
+            <tr>
+              <td><code>error</code></td>
+              <td>string</td>
+              <td>失败时返回错误信息</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>成功响应示例</h3>
+        <div class="json-preview">HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+
+{
+  "img-001": {
+    "success": true,
+    "data": { "base64": "UklGRi..." }
+  },
+  "img-002": {
+    "success": true,
+    "data": { "base64": "iVBORw0K..." }
+  },
+  "meta-001": {
+    "success": true,
+    "data": {
+      "width": 1920,
+      "height": 1080,
+      "format": "jpeg",
+      "channels": 3,
+      "sourceUrl": "https://example.com/banner.jpg",
+      "sourceContentType": "image/jpeg",
+      "sourceSize": 2483921
+    }
+  }
+}</div>
+
+        <h3>部分失败响应示例</h3>
+        <div class="json-preview">HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+
+{
+  "img-001": {
+    "success": true,
+    "data": { "base64": "UklGRi..." }
+  },
+  "img-002": {
+    "success": false,
+    "error": "Source fetch failed"
+  }
+}</div>
+
+        <h3>错误响应</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>状态码</th>
+              <th>说明</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>400</code></td>
+              <td>请求体不是数组、缺少 uuid/url、uuid 重复、或超过 20 张限制</td>
+            </tr>
+            <tr>
+              <td><code>403</code></td>
+              <td>PLATFORM 不是 huggingface</td>
+            </tr>
+            <tr>
+              <td><code>405</code></td>
+              <td>请求方法不是 POST</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
       <section id="api" aria-labelledby="api-title">
         <h2 id="api-title"><span class="section-icon">⚙️</span>API 参考</h2>
+
+        <h3>快速调用</h3>
+        <div class="endpoint">
+          <code id="api-example"
+            >/api/media/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=800&amp;height=600&amp;fit=cover</code
+          >
+          <button class="copy" type="button" data-copy="#api-example">复制</button>
+        </div>
 
         <h3>接口地址</h3>
         <pre><code>GET /api/media/&lt;encoded-source-url&gt;</code></pre>
@@ -516,6 +716,132 @@
           </tbody>
         </table>
 
+        <h3>请求头</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>请求头</th>
+              <th>说明</th>
+              <th>示例</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>Accept</code></td>
+              <td>可选。指定客户端接受的响应内容类型。</td>
+              <td><code>image/webp, image/*</code></td>
+            </tr>
+            <tr>
+              <td><code>If-None-Match</code></td>
+              <td>可选。配合 ETag 实现条件请求，减少重复传输。</td>
+              <td><code>"abc123"</code></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>请求示例</h3>
+        <div class="json-preview">GET /api/media/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=800&amp;height=600&amp;fit=cover HTTP/1.1
+Host: your-domain.com
+Accept: image/webp, image/*</div>
+
+        <h3>响应头</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>响应头</th>
+              <th>说明</th>
+              <th>示例</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>Content-Type</code></td>
+              <td>响应内容类型。</td>
+              <td><code>image/webp</code></td>
+            </tr>
+            <tr>
+              <td><code>Cache-Control</code></td>
+              <td>CDN 和浏览器缓存策略。</td>
+              <td><code>public, max-age=31536000, immutable</code></td>
+            </tr>
+            <tr>
+              <td><code>X-Processor</code></td>
+              <td>处理引擎标识。</td>
+              <td><code>edge-image</code></td>
+            </tr>
+            <tr>
+              <td><code>X-Image-Width</code></td>
+              <td>输出图片宽度（像素）。</td>
+              <td><code>800</code></td>
+            </tr>
+            <tr>
+              <td><code>X-Image-Height</code></td>
+              <td>输出图片高度（像素）。</td>
+              <td><code>600</code></td>
+            </tr>
+            <tr>
+              <td><code>X-Image-Format</code></td>
+              <td>输出图片格式。</td>
+              <td><code>webp</code></td>
+            </tr>
+            <tr>
+              <td><code>X-Image-Size</code></td>
+              <td>输出图片大小（字节）。</td>
+              <td><code>45678</code></td>
+            </tr>
+            <tr>
+              <td><code>X-Processing-Error</code></td>
+              <td>降级响应时，包含错误信息。</td>
+              <td><code>Image processing failed</code></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>成功响应示例</h3>
+        <div class="json-preview">HTTP/1.1 200 OK
+Content-Type: image/webp
+Cache-Control: public, max-age=31536000, immutable
+X-Processor: edge-image
+X-Image-Width: 800
+X-Image-Height: 600
+X-Image-Format: webp
+X-Image-Size: 45678
+
+[二进制图片数据]</div>
+
+        <h3>降级响应示例（处理失败，返回原图）</h3>
+        <div class="json-preview">HTTP/1.1 200 OK
+Content-Type: image/jpeg
+Cache-Control: public, max-age=31536000, immutable
+X-Processor: edge-image
+X-Processing-Error: Image processing failed
+
+[原始图片数据]</div>
+
+        <h3>JSON 响应示例（format=json）</h3>
+        <div class="json-preview">HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+Cache-Control: public, max-age=31536000, immutable
+X-Processor: edge-image
+
+{
+  "width": 800,
+  "height": 600,
+  "format": "jpeg",
+  "channels": 3,
+  "sourceUrl": "https://example.com/photo.jpg",
+  "sourceContentType": "image/jpeg",
+  "sourceSize": 2483921
+}</div>
+
+        <h3>错误响应示例</h3>
+        <div class="json-preview">HTTP/1.1 400 Bad Request
+Content-Type: application/json; charset=utf-8
+
+{
+  "error": "url must be an absolute HTTP or HTTPS URL"
+}</div>
+
         <h3>源媒体域名白名单</h3>
         <div class="panel">
           <p>
@@ -547,8 +873,12 @@
               <td>请求参数缺失或非法，或源域名不在白名单。</td>
             </tr>
             <tr>
+              <td><code>403</code></td>
+              <td>批量处理请求在非 huggingface 平台。</td>
+            </tr>
+            <tr>
               <td><code>405</code></td>
-              <td>请求方法不是 <code>GET</code>。</td>
+              <td>请求方法不是 <code>GET</code>（单图）或 <code>POST</code>（批量）。</td>
             </tr>
             <tr>
               <td><code>502</code></td>
