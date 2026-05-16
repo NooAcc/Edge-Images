@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createImageHandler } from './lib/handler.js';
+import { createBatchHandler } from './lib/batch.js';
 import { getPlatformConfig } from './lib/platform-config.js';
 import { createCache } from './lib/cache.js';
 
@@ -19,6 +20,7 @@ if (cache) {
 }
 
 const imageHandler = createImageHandler({ platformConfig, cache });
+const batchHandler = createBatchHandler({ platformConfig, cache });
 
 let indexHtml;
 try {
@@ -40,6 +42,10 @@ const server = createServer(async (req, res) => {
 
   if (pathname.startsWith('/api/media')) {
     return imageHandler(req, res);
+  }
+
+  if (pathname === '/api/batch') {
+    return batchHandler(req, res);
   }
 
   if ((pathname === '/' || pathname === '/index.html') && indexHtml) {

@@ -363,6 +363,10 @@
             <p>支持缩放、裁剪、旋转、翻转，输出 WebP/JPEG/PNG/AVIF</p>
           </article>
           <article class="card">
+            <h3>批量处理</h3>
+            <p>一次请求处理多张图片，全部完成后返回结果（Hugging Face 平台）</p>
+          </article>
+          <article class="card">
             <h3>视频封面</h3>
             <p>自动提取 MP4/WebM 视频首帧作为封面图</p>
           </article>
@@ -387,6 +391,7 @@
 
       <section id="usage" aria-labelledby="usage-title">
         <h2 id="usage-title">快速调用</h2>
+        <h3 style="margin: 16px 0 8px; font-size: 16px;">单图处理</h3>
         <div class="endpoint">
           <code id="example-url"
             >/api/media/https%3A%2F%2Fexample.com%2Fmedia.jpg?width=800&amp;height=600&amp;fit=cover</code
@@ -396,6 +401,17 @@
         <p style="margin-top: 14px; color: var(--muted)">
           源地址需要 URL 编码，直接放入 <code>&lt;img&gt;</code> 的 <code>src</code> 属性即可使用。
         </p>
+        <h3 style="margin: 24px 0 8px; font-size: 16px;">批量处理 <span style="font-size: 12px; color: var(--muted);">（仅 Hugging Face 平台）</span></h3>
+        <div class="endpoint">
+          <code id="example-batch">POST /api/batch</code>
+          <button class="copy" type="button" data-copy="#example-batch-req">复制</button>
+        </div>
+        <pre id="example-batch-req" style="margin-top: 8px; padding: 12px; background: var(--code); color: #e9f1f7; border-radius: 8px; font-size: 13px; overflow-x: auto;">curl -X POST /api/batch \
+  -H "Content-Type: application/json" \
+  -d '[
+    {"uuid":"img-001","url":"https://example.com/a.jpg","params":{"width":200}},
+    {"uuid":"img-002","url":"https://example.com/b.png","params":{"format":"json"}}
+  ]'</pre>
       </section>
 
       <section id="platform" aria-labelledby="platform-title">
@@ -418,6 +434,11 @@
               <td style="padding:8px 12px;">默认质量</td>
               <td style="padding:8px 12px;">85</td>
               <td style="padding:8px 12px;">90</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--line);">
+              <td style="padding:8px 12px;">批量处理</td>
+              <td style="padding:8px 12px;">不支持</td>
+              <td style="padding:8px 12px;">支持（最多 20 张）</td>
             </tr>
             <tr style="border-bottom:1px solid var(--line);">
               <td style="padding:8px 12px;">缓存策略</td>

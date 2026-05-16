@@ -17,6 +17,7 @@ pinned: false
 - 支持 WebP、JPEG、PNG、AVIF 输出，质量可控
 - 支持视频封面提取（MP4/WebM）和元数据查询
 - `format=json` 返回图片或视频元信息
+- 批量处理：一次请求处理多张图片（仅 Hugging Face 平台）
 - 平台感知配置：根据部署平台自动调整参数和缓存策略
 - 两级缓存（内存 LRU + 磁盘）：Docker 部署下自动启用
 - 20 秒源媒体下载超时
@@ -34,11 +35,76 @@ npm run vercel:dev
 
 ## API
 
+### 单图处理
+
 ```text
 GET /api/media/<encoded-source-url>
 ```
 
 `encoded-source-url` 是经 `encodeURIComponent` 编码的完整 `http` 或 `https` 图片/视频地址。
+
+### 批量处理（仅 Hugging Face 平台）
+
+```text
+POST /api/batch
+Content-Type: application/json
+```
+
+一次请求处理多张图片，全部完成后返回结果。
+
+**请求体：** JSON 数组
+
+```json
+[
+  {
+    "uuid": "img-001",
+    "url": "https://example.com/photo.jpg",
+    "params": { "width": 200, "height": 200, "format": "webp" }
+  },
+  {
+    "uuid": "img-002",
+    "url": "https://example.com/logo.png",
+    "params": { "width": 100, "format": "json" }
+  }
+]
+```
+
+每个元素：
+- `uuid`（必填）：唯一标识符，字符串
+- `url`（必填）：图片地址
+- `params`（可选）：处理参数，支持 `width`、`height`、`quality`、`fit`、`format`、`rotate`、`flip`、`background`
+
+**响应：** JSON 对象，以 uuid 为键
+
+```json
+{
+  "img-001": {
+    "success": true,
+    "data": { "base64": "UklGRi..." }
+  },
+  "img-002": {
+    "success": true,
+    "data": {
+      "width": 800,
+      "height": 600,
+      "format": "jpeg",
+      "channels": 3,
+      "sourceUrl": "https://example.com/logo.png",
+      "sourceContentType": "image/png",
+      "sourceSize": 1024000
+    }
+  }
+}
+```
+
+- `format=json`：`data` 包含元数据
+- 其他格式：`data` 包含 `base64` 字段
+- 失败项：`success: false`，包含 `error` 字段
+
+**限制：**
+- 最多 20 张图片/批次
+- uuid 必须唯一
+- 仅 `PLATFORM=huggingface` 可用
 
 ### 查询参数
 
@@ -147,7 +213,8 @@ X-Processor: edge-image
 | 状态码 | 含义                                                             |
 | ------ | ---------------------------------------------------------------- |
 | `400`  | 参数缺失或非法                                                   |
-| `405`  | 请求方法不是 `GET`                                               |
+| `403`  | 批量处理请求在非 huggingface 平台                                |
+| `405`  | 请求方法不是 `GET`（单图）或 `POST`（批量）                      |
 | `502`  | 源媒体无法下载、超时、返回非 2xx、文件过大，或响应不是媒体       |
 | `500`  | 源媒体下载成功前发生未预期错误                                   |
 
@@ -232,6 +299,7 @@ vercel deploy --prod
 | ------------------ | ------------ | -------------- |
 | 最大输出尺寸       | 1024px       | 2048px         |
 | 默认质量           | 85           | 90             |
+| 批量处理           | 不支持       | 支持（最多 20 张） |
 | 缓存策略           | 无           | 内存 LRU + 磁盘 |
 | 内存缓存           | -            | 4096 MB        |
 | 磁盘缓存           | -            | 50 GB          |
