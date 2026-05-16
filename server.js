@@ -48,6 +48,23 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  // Serve /docs/ static files
+  if (pathname.startsWith('/docs/')) {
+    const docsPath = pathname === '/docs/' ? '/docs/index.html' : pathname;
+    const safePath = docsPath.replace(/\.\./g, '');
+    const filePath = join(__dirname, safePath);
+    try {
+      const content = await readFile(filePath);
+      const ext = filePath.split('.').pop();
+      const contentTypes = { html: 'text/html; charset=utf-8', md: 'text/markdown; charset=utf-8', css: 'text/css', js: 'application/javascript' };
+      res.writeHead(200, { 'Content-Type': contentTypes[ext] || 'text/plain; charset=utf-8' });
+      res.end(content);
+      return;
+    } catch {
+      // file not found, fall through to 404
+    }
+  }
+
   res.writeHead(404, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ error: 'Not Found' }));
 });

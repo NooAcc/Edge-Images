@@ -470,12 +470,12 @@
           <tbody>
             <tr>
               <td><code>width</code></td>
-              <td>目标宽度，最大 1024。仅传宽度时，高度按比例推断。</td>
+              <td>目标宽度，上限由平台决定（Vercel 1024 / HF 2048）。仅传宽度时，高度按比例推断。</td>
               <td>按源媒体推断</td>
             </tr>
             <tr>
               <td><code>height</code></td>
-              <td>目标高度，最大 1024。仅传高度时，宽度按比例推断。</td>
+              <td>目标高度，上限由平台决定（Vercel 1024 / HF 2048）。仅传高度时，宽度按比例推断。</td>
               <td>按源媒体推断</td>
             </tr>
             <tr>
@@ -489,7 +489,7 @@
             <tr>
               <td><code>quality</code></td>
               <td>输出质量，范围 1 到 100。</td>
-              <td><code>85</code></td>
+              <td>Vercel <code>85</code> / HF <code>90</code></td>
             </tr>
             <tr>
               <td><code>format</code></td>
