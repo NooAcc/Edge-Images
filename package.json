@@ -20,6 +20,7 @@
     "@vercel/speed-insights": "^2.0.0",
     "ffmpeg-static": "^5.2.0",
     "ffprobe-static": "^3.1.0",
+    "lru-cache": "^11.3.6",
     "sharp": "^0.34.5"
   },
   "devDependencies": {

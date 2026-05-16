@@ -198,7 +198,7 @@
 
       .grid {
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 14px;
       }
 
@@ -281,7 +281,7 @@
         }
 
         .grid {
-          grid-template-columns: 1fr;
+          grid-template-columns: repeat(2, 1fr);
         }
 
         .endpoint {
@@ -328,6 +328,7 @@
         <nav aria-label="页面导航">
           <a href="#features">功能</a>
           <a href="#usage">调用方式</a>
+          <a href="#platform">平台预设</a>
           <a href="/docs/">文档</a>
           <a href="/docs/#api">API</a>
         </nav>
@@ -337,10 +338,10 @@
     <main class="shell">
       <section class="hero" aria-labelledby="page-title">
         <div>
-          <p class="eyebrow">Vercel Node.js Serverless</p>
+          <p class="eyebrow">Node.js 媒体处理服务</p>
           <h1 id="page-title">动态媒体处理服务</h1>
           <p class="lead">
-            传入远程图片或视频 URL，自动完成缩放、裁剪、格式转换，输出优化后的 WebP/JPEG/PNG/AVIF。
+            传入远程图片或视频 URL，自动完成缩放、裁剪、格式转换。支持 Vercel 和 Docker 部署，根据平台自动优化参数和缓存策略。
           </p>
           <div class="actions">
             <a class="button" href="#usage">开始使用</a>
@@ -359,11 +360,19 @@
         <div class="grid">
           <article class="card">
             <h3>图片处理</h3>
-            <p>支持缩放、裁剪、旋转、翻转，输出多种格式</p>
+            <p>支持缩放、裁剪、旋转、翻转，输出 WebP/JPEG/PNG/AVIF</p>
           </article>
           <article class="card">
             <h3>视频封面</h3>
             <p>自动提取 MP4/WebM 视频首帧作为封面图</p>
+          </article>
+          <article class="card">
+            <h3>平台感知</h3>
+            <p>根据部署平台自动调整参数上限和缓存策略</p>
+          </article>
+          <article class="card">
+            <h3>两级缓存</h3>
+            <p>Docker 部署自动启用内存 LRU + 磁盘缓存，减少重复处理</p>
           </article>
           <article class="card">
             <h3>元信息查询</h3>
@@ -388,10 +397,50 @@
           源地址需要 URL 编码，直接放入 <code>&lt;img&gt;</code> 的 <code>src</code> 属性即可使用。
         </p>
       </section>
+
+      <section id="platform" aria-labelledby="platform-title">
+        <h2 id="platform-title">平台预设</h2>
+        <table style="width:100%; border-collapse:collapse; font-size:14px; margin-top:12px;">
+          <thead>
+            <tr style="border-bottom:2px solid var(--line); text-align:left;">
+              <th style="padding:8px 12px;">配置项</th>
+              <th style="padding:8px 12px;">Vercel</th>
+              <th style="padding:8px 12px;">Hugging Face</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="border-bottom:1px solid var(--line);">
+              <td style="padding:8px 12px;">最大输出尺寸</td>
+              <td style="padding:8px 12px;">1024px</td>
+              <td style="padding:8px 12px;">2048px</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--line);">
+              <td style="padding:8px 12px;">默认质量</td>
+              <td style="padding:8px 12px;">85</td>
+              <td style="padding:8px 12px;">90</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--line);">
+              <td style="padding:8px 12px;">缓存策略</td>
+              <td style="padding:8px 12px;">无</td>
+              <td style="padding:8px 12px;">内存 LRU + 磁盘</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--line);">
+              <td style="padding:8px 12px;">内存缓存</td>
+              <td style="padding:8px 12px;">-</td>
+              <td style="padding:8px 12px;">4096 MB</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 12px;">磁盘缓存</td>
+              <td style="padding:8px 12px;">-</td>
+              <td style="padding:8px 12px;">50 GB</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
     </main>
 
     <footer>
-      <div class="shell">Powered by Vercel Serverless Functions and sharp</div>
+      <div class="shell">Powered by Node.js, sharp, and ffmpeg</div>
     </footer>
 
     <script>

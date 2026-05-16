@@ -3,10 +3,22 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createImageHandler } from './lib/handler.js';
+import { getPlatformConfig } from './lib/platform-config.js';
+import { createCache } from './lib/cache.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
-const imageHandler = createImageHandler();
+
+const platformConfig = getPlatformConfig();
+const cache = createCache(platformConfig);
+
+if (cache) {
+  await cache.initDisk();
+  await cache.cleanup();
+  console.log(`[server] cache enabled: type=${platformConfig.cache.type}, memory=${platformConfig.cache.maxMemoryMB}MB, disk=${platformConfig.cache.maxDiskGB}GB`);
+}
+
+const imageHandler = createImageHandler({ platformConfig, cache });
 
 let indexHtml;
 try {

@@ -17,7 +17,8 @@ pinned: false
 - 支持 WebP、JPEG、PNG、AVIF 输出，质量可控
 - 支持视频封面提取（MP4/WebM）和元数据查询
 - `format=json` 返回图片或视频元信息
-- 输出尺寸限制在 1024×1024 以内
+- 平台感知配置：根据部署平台自动调整参数和缓存策略
+- 两级缓存（内存 LRU + 磁盘）：Docker 部署下自动启用
 - 20 秒源媒体下载超时
 - 处理失败时降级返回原图
 - 响应头包含 CDN 缓存控制和媒体元信息
@@ -43,10 +44,10 @@ GET /api/media/<encoded-source-url>
 
 | 参数         | 默认值   | 说明                                                                                 |
 | ------------ | -------- | ------------------------------------------------------------------------------------ |
-| `width`      | -        | 目标宽度（px），最大 1024                                                            |
-| `height`     | -        | 目标高度（px），最大 1024                                                            |
+| `width`      | -        | 目标宽度（px），上限由平台决定（Vercel 1024 / HF 2048）                              |
+| `height`     | -        | 目标高度（px），上限由平台决定（Vercel 1024 / HF 2048）                              |
 | `fit`        | `inside` | 缩放模式：`cover`、`contain`、`fill`、`inside`、`outside`                            |
-| `quality`    | `85`     | 输出质量，1–100                                                                      |
+| `quality`    | 平台默认 | 输出质量，1–100（Vercel 默认 85 / HF 默认 90）                                       |
 | `format`     | `webp`   | 输出格式：`webp`、`jpeg`、`png`、`avif`、`json`                                      |
 | `background` | `FFFFFF` | `contain` 模式的十六进制 `RRGGBB` 背景色                                             |
 | `rotate`     | -        | 旋转角度：`90`、`180`、`270`                                                         |
@@ -152,6 +153,23 @@ X-Processor: edge-image
 
 ## 环境变量
 
+### 平台配置
+
+| 变量                 | 默认值   | 说明                                                                   |
+| -------------------- | -------- | ---------------------------------------------------------------------- |
+| `PLATFORM`           | `vercel` | 部署平台：`vercel` 或 `huggingface`，自动选择预设参数和缓存策略        |
+
+### 平台预设覆盖（可选）
+
+| 变量                 | 说明                                                                   |
+| -------------------- | ---------------------------------------------------------------------- |
+| `MAX_DIMENSION`      | 覆盖最大输出尺寸（px）                                                 |
+| `DEFAULT_QUALITY`    | 覆盖默认输出质量（1–100）                                              |
+| `CACHE_MAX_MEMORY_MB`| 覆盖内存缓存大小（MB）                                                 |
+| `CACHE_MAX_DISK_GB`  | 覆盖磁盘缓存大小（GB）                                                 |
+
+### 其他
+
 | 变量                 | 默认值 | 说明                                                                   |
 | -------------------- | ------ | ---------------------------------------------------------------------- |
 | `IMAGE_URL_ALLOWLIST`| -      | 源媒体域名白名单，逗号或空格分隔。留空则允许任意域名                   |
@@ -171,18 +189,14 @@ X-Processor: edge-image
 
 ## 部署
 
-### Docker
+### Docker（默认 PLATFORM=huggingface）
 
-构建镜像（默认使用系统 ffmpeg）：
+Docker 部署自动启用两级缓存（内存 LRU + 磁盘），输出尺寸上限提升至 2048px，默认质量 90。
+
+构建镜像：
 
 ```shell
 docker build -t edge-image .
-```
-
-使用 ffmpeg-static（不安装系统 ffmpeg）：
-
-```shell
-docker build --build-arg USE_SYSTEM_FFMPEG=false -t edge-image .
 ```
 
 运行：
@@ -191,7 +205,15 @@ docker build --build-arg USE_SYSTEM_FFMPEG=false -t edge-image .
 docker run -p 3000:3000 -e IMAGE_URL_ALLOWLIST=example.com edge-image
 ```
 
-### Vercel
+挂载缓存卷（推荐）：
+
+```shell
+docker run -p 3000:3000 -v edge-cache:/app/cache -e IMAGE_URL_ALLOWLIST=example.com edge-image
+```
+
+### Vercel（默认 PLATFORM=vercel）
+
+Vercel 部署无缓存，保持 serverless 轻量特性。
 
 1. 推送到 GitHub 仓库
 2. 在 Vercel 控制台导入仓库，Framework Preset 保持 **Other**
@@ -203,6 +225,16 @@ vercel deploy --prod
 ```
 
 5. 在 Vercel 项目控制台启用 **Analytics** 和 **Speed Insights**，重新部署
+
+## 平台预设对比
+
+| 配置项             | Vercel       | Hugging Face   |
+| ------------------ | ------------ | -------------- |
+| 最大输出尺寸       | 1024px       | 2048px         |
+| 默认质量           | 85           | 90             |
+| 缓存策略           | 无           | 内存 LRU + 磁盘 |
+| 内存缓存           | -            | 4096 MB        |
+| 磁盘缓存           | -            | 50 GB          |
 
 ## 调试
 

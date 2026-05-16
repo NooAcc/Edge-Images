@@ -23,6 +23,7 @@ ENV USE_SYSTEM_FFMPEG=true
 ENV FFMPEG_PATH=/usr/bin/ffmpeg
 ENV FFPROBE_PATH=/usr/bin/ffprobe
 ENV PORT=3000
+ENV PLATFORM=huggingface
 
 EXPOSE 3000
 
