@@ -108,10 +108,10 @@ Lower bandwidth preview:
 The API returns:
 
 ```text
-Cache-Control: public, max-age=86400, s-maxage=604800
+Cache-Control: public, max-age=31536000, immutable
 ```
 
-This lets browsers cache for one day and Vercel's CDN cache for seven days. Since the encoded source path and query string are part of the URL, different sources and parameter combinations create separate cache entries.
+This tells browsers and CDNs to cache the response for one year. Since the encoded source path and query string are part of the URL, different sources and parameter combinations create separate cache entries.
 
 ## Fallback Behavior
 
