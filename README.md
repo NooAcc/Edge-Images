@@ -208,7 +208,7 @@ docker run -p 3000:3000 -e IMAGE_URL_ALLOWLIST=example.com edge-image
 挂载缓存卷（推荐）：
 
 ```shell
-docker run -p 3000:3000 -v edge-cache:/app/cache -e IMAGE_URL_ALLOWLIST=example.com edge-image
+docker run -p 3000:3000 -v edge-cache:/data -e IMAGE_URL_ALLOWLIST=example.com edge-image
 ```
 
 ### Vercel（默认 PLATFORM=vercel）
