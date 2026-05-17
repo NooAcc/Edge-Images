@@ -80,7 +80,7 @@ Content-Type: application/json
 {
   "img-001": {
     "success": true,
-    "data": { "base64": "UklGRi..." }
+    "data": { "base64": "UklGRi...", "contentType": "image/webp" }
   },
   "img-002": {
     "success": true,
@@ -98,7 +98,7 @@ Content-Type: application/json
 ```
 
 - `format=json`：`data` 包含元数据
-- 其他格式：`data` 包含 `base64` 字段
+- 其他格式：`data` 包含 `base64` 和 `contentType` 字段
 - 失败项：`success: false`，包含 `error` 字段
 
 **限制：**

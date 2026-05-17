@@ -159,7 +159,7 @@ Content-Type: application/json
             <tr>
               <td><code>data</code></td>
               <td>object</td>
-              <td>成功时返回。普通图片包含 <code>base64</code> 字段；<code>format=json</code> 包含元数据</td>
+              <td>成功时返回。普通图片包含 <code>base64</code> 和 <code>contentType</code> 字段；<code>format=json</code> 包含元数据</td>
             </tr>
             <tr>
               <td><code>error</code></td>
@@ -178,11 +178,11 @@ Content-Type: application/json; charset=utf-8
 {
   "img-001": {
     "success": true,
-    "data": { "base64": "UklGRi..." }
+    "data": { "base64": "UklGRi...", "contentType": "image/webp" }
   },
   "img-002": {
     "success": true,
-    "data": { "base64": "iVBORw0K..." }
+    "data": { "base64": "iVBORw0K...", "contentType": "image/png" }
   },
   "meta-001": {
     "success": true,
@@ -207,7 +207,7 @@ Content-Type: application/json; charset=utf-8
 {
   "img-001": {
     "success": true,
-    "data": { "base64": "UklGRi..." }
+    "data": { "base64": "UklGRi...", "contentType": "image/webp" }
   },
   "img-002": {
     "success": false,
