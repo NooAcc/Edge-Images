@@ -8,96 +8,10 @@
       name="description"
       content="动态媒体处理服务，支持图片处理和视频封面提取。"
     />
+    <link rel="stylesheet" href="/styles.css" />
     <style>
-      :root {
-        --ink: #1f2933;
-        --muted: #52616f;
-        --line: #d8e0e8;
-        --panel: #ffffff;
-        --page: #f6f8fb;
-        --accent: #087f8c;
-        --accent-dark: #065c66;
-        --code: #18212f;
-      }
-
-      * {
-        box-sizing: border-box;
-      }
-
-      body {
-        margin: 0;
-        background: var(--page);
-        color: var(--ink);
-        font-family:
-          Inter,
-          ui-sans-serif,
-          system-ui,
-          -apple-system,
-          BlinkMacSystemFont,
-          'Segoe UI',
-          sans-serif;
-        line-height: 1.6;
-      }
-
-      a {
-        color: var(--accent-dark);
-      }
-
       .shell {
         width: min(1120px, calc(100% - 32px));
-        margin: 0 auto;
-      }
-
-      header {
-        border-bottom: 1px solid var(--line);
-        background: rgba(255, 255, 255, 0.86);
-        backdrop-filter: blur(12px);
-        position: sticky;
-        top: 0;
-        z-index: 2;
-      }
-
-      .nav {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        min-height: 64px;
-        gap: 20px;
-      }
-
-      .brand {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        font-weight: 760;
-        letter-spacing: 0;
-      }
-
-      .mark {
-        display: grid;
-        width: 34px;
-        height: 34px;
-        place-items: center;
-        border-radius: 8px;
-        background: var(--accent);
-        color: #ffffff;
-        font-size: 18px;
-        font-weight: 760;
-      }
-
-      nav {
-        display: flex;
-        gap: 18px;
-        font-size: 14px;
-      }
-
-      nav a {
-        color: var(--muted);
-        text-decoration: none;
-      }
-
-      main {
-        padding: 56px 0 64px;
       }
 
       .hero {
@@ -115,18 +29,13 @@
       }
 
       h1 {
-        margin: 0;
         max-width: 680px;
         font-size: clamp(32px, 6vw, 56px);
-        line-height: 1.08;
-        letter-spacing: 0;
       }
 
       .lead {
         max-width: 580px;
         margin: 20px 0 0;
-        color: var(--muted);
-        font-size: 18px;
       }
 
       .actions {
@@ -186,110 +95,9 @@
         text-align: center;
       }
 
-      section {
-        margin-top: 52px;
-      }
-
-      h2 {
-        margin: 0 0 16px;
-        font-size: 24px;
-        line-height: 1.2;
-      }
-
-      .grid {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 14px;
-      }
-
-      .card {
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: var(--panel);
-        padding: 20px;
-      }
-
-      .card h3 {
-        margin: 0 0 8px;
-        font-size: 16px;
-      }
-
-      .card p {
-        margin: 0;
-        color: var(--muted);
-        font-size: 14px;
-      }
-
-      .endpoint {
-        display: grid;
-        grid-template-columns: 1fr auto;
-        gap: 12px;
-        align-items: center;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: var(--code);
-        color: #e9f1f7;
-        padding: 16px;
-        overflow: hidden;
-      }
-
-      code {
-        font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-        font-size: 14px;
-      }
-
-      .endpoint code {
-        overflow-wrap: anywhere;
-      }
-
-      .copy {
-        min-width: 80px;
-        min-height: 38px;
-        border: 1px solid rgba(255, 255, 255, 0.28);
-        border-radius: 8px;
-        background: rgba(255, 255, 255, 0.09);
-        color: #ffffff;
-        cursor: pointer;
-        font-weight: 700;
-      }
-
-      footer {
-        border-top: 1px solid var(--line);
-        padding: 24px 0;
-        color: var(--muted);
-        font-size: 14px;
-        text-align: center;
-      }
-
       @media (max-width: 768px) {
-        .nav {
-          align-items: flex-start;
-          flex-direction: column;
-          padding: 14px 0;
-        }
-
-        nav {
-          flex-wrap: wrap;
-        }
-
-        main {
-          padding-top: 36px;
-        }
-
         .hero {
           grid-template-columns: 1fr;
-        }
-
-        .grid {
-          grid-template-columns: repeat(2, 1fr);
-        }
-
-        .endpoint {
-          grid-template-columns: 1fr;
-        }
-
-        .copy {
-          width: 100%;
         }
       }
     </style>
@@ -303,10 +111,10 @@
         </div>
         <nav aria-label="页面导航">
           <a href="#features">功能</a>
-          <a href="#usage">调用方式</a>
-          <a href="#platform">平台预设</a>
-          <a href="/docs/">文档</a>
-          <a href="/docs/#api">API</a>
+          <a href="/images.html">图片处理</a>
+          <a href="/videos.html">视频处理</a>
+          <a href="/batch.html">批量处理</a>
+          <a href="/api.html">API</a>
         </nav>
       </div>
     </header>
@@ -320,8 +128,8 @@
             传入远程图片或视频 URL，自动完成缩放、裁剪、格式转换。支持 Vercel 和 Docker 部署，根据平台自动优化参数和缓存策略。
           </p>
           <div class="actions">
-            <a class="button" href="#usage">开始使用</a>
-            <a class="button secondary" href="/docs/">查看文档</a>
+            <a class="button" href="/images.html">开始使用</a>
+            <a class="button secondary" href="/api.html">查看文档</a>
           </div>
         </div>
 
@@ -391,44 +199,37 @@
       </section>
 
       <section id="platform" aria-labelledby="platform-title">
-        <h2 id="platform-title">平台预设</h2>
+        <h2 id="platform-title">平台配置</h2>
         <table style="width:100%; border-collapse:collapse; font-size:14px; margin-top:12px;">
           <thead>
             <tr style="border-bottom:2px solid var(--line); text-align:left;">
               <th style="padding:8px 12px;">配置项</th>
-              <th style="padding:8px 12px;">Vercel</th>
-              <th style="padding:8px 12px;">Hugging Face</th>
+              <th style="padding:8px 12px;">默认值</th>
             </tr>
           </thead>
           <tbody>
             <tr style="border-bottom:1px solid var(--line);">
               <td style="padding:8px 12px;">最大输出尺寸</td>
-              <td style="padding:8px 12px;">1024px</td>
               <td style="padding:8px 12px;">2048px</td>
             </tr>
             <tr style="border-bottom:1px solid var(--line);">
               <td style="padding:8px 12px;">默认质量</td>
-              <td style="padding:8px 12px;">85</td>
               <td style="padding:8px 12px;">90</td>
             </tr>
             <tr style="border-bottom:1px solid var(--line);">
               <td style="padding:8px 12px;">批量处理</td>
-              <td style="padding:8px 12px;">不支持</td>
               <td style="padding:8px 12px;">支持（最多 20 张）</td>
             </tr>
             <tr style="border-bottom:1px solid var(--line);">
               <td style="padding:8px 12px;">缓存策略</td>
-              <td style="padding:8px 12px;">无</td>
               <td style="padding:8px 12px;">内存 LRU + 磁盘</td>
             </tr>
             <tr style="border-bottom:1px solid var(--line);">
               <td style="padding:8px 12px;">内存缓存</td>
-              <td style="padding:8px 12px;">-</td>
               <td style="padding:8px 12px;">4096 MB</td>
             </tr>
             <tr>
               <td style="padding:8px 12px;">磁盘缓存</td>
-              <td style="padding:8px 12px;">-</td>
               <td style="padding:8px 12px;">50 GB</td>
             </tr>
           </tbody>
