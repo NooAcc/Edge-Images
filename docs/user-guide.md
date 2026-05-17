@@ -2,7 +2,7 @@
 
 ## What This Service Does
 
-This API receives a remote image URL and returns a transformed WebP image. It is intended for frontend image delivery where you want consistent dimensions, smaller payloads, and Vercel edge caching.
+This API receives a remote image or video URL and returns transformed output. It is intended for frontend media delivery where you want consistent dimensions, smaller payloads, and optimized formats.
 
 ## Basic Usage
 
@@ -68,9 +68,9 @@ Lower bandwidth preview:
 `width` and `height`
 
 - Positive integers.
-- Values above `1024` become `1024`.
+- Values above `2048` become `2048`.
 - If only one is provided, the other is inferred from the source aspect ratio.
-- If neither is provided, oversized sources are still reduced to fit inside `1024 x 1024`.
+- If neither is provided, oversized sources are still reduced to fit inside `2048 x 2048`.
 
 `fit`
 
@@ -83,7 +83,7 @@ Lower bandwidth preview:
 `quality`
 
 - Integer from `1` to `100`.
-- Default is `85`.
+- Default is `90`.
 - Lower values reduce bandwidth but may show compression artifacts.
 
 `background`
@@ -131,14 +131,13 @@ This keeps pages usable even when a source image has an unsupported or damaged f
 - Use `cover` for thumbnails and cards.
 - Use `contain` for product images where the full object should remain visible.
 - Keep source images reasonably sized; the service rejects source payloads above 50 MB.
-- Monitor Vercel function duration, bandwidth, and error rate after deployment.
 
 ## Debug Logs
 
-Set `IMAGE_DEBUG_LOGS=1` before running the dev server to emit structured console logs:
+Set `IMAGE_DEBUG_LOGS=1` before running the server to emit structured console logs:
 
 ```shell
-IMAGE_DEBUG_LOGS=1 npm run vercel:dev
+IMAGE_DEBUG_LOGS=1 npm start
 ```
 
 Each line starts with `[image]` and contains a JSON record. Key events:

@@ -12,12 +12,9 @@
     "lint:fix": "eslint . --fix",
     "test": "node test/run-tests.js",
     "test:unit": "node test/run-unit-tests.js",
-    "test:system": "node test/run-system-tests.js",
-    "vercel:dev": "vercel dev"
+    "test:system": "node test/run-system-tests.js"
   },
   "dependencies": {
-    "@vercel/analytics": "^2.0.1",
-    "@vercel/speed-insights": "^2.0.0",
     "ffmpeg-static": "^5.2.0",
     "ffprobe-static": "^3.1.0",
     "lru-cache": "^11.3.6",

@@ -2,7 +2,7 @@
 
 ## Overview
 
-Add a `PLATFORM` environment variable that selects deployment-specific presets (Vercel vs Hugging Face Docker). Presets control processing limits, caching strategy, and runtime behavior. Individual settings can be overridden via environment variables.
+Platform-aware configuration system for Docker deployment. Presets control processing limits, caching strategy, and runtime behavior. Individual settings can be overridden via environment variables.
 
 ## Architecture
 
@@ -23,29 +23,24 @@ Add a `PLATFORM` environment variable that selects deployment-specific presets (
 
 ### Presets
 
-| Key | Vercel | Hugging Face | Env Override |
-|-----|--------|-------------|--------------|
-| `maxDimension` | 1024 | 2048 | `MAX_DIMENSION` |
-| `defaultQuality` | 85 | 90 | `DEFAULT_QUALITY` |
-| `cache.type` | `'none'` | `'lru+disk'` | — |
-| `cache.maxMemoryMB` | 0 | 4096 | `CACHE_MAX_MEMORY_MB` |
-| `cache.maxDiskGB` | 0 | 50 | `CACHE_MAX_DISK_GB` |
+| Key | Hugging Face | Env Override |
+|-----|-------------|--------------|
+| `maxDimension` | 2048 | `MAX_DIMENSION` |
+| `defaultQuality` | 90 | `DEFAULT_QUALITY` |
+| `cache.type` | `'lru+disk'` | — |
+| `cache.maxMemoryMB` | 4096 | `CACHE_MAX_MEMORY_MB` |
+| `cache.maxDiskGB` | 50 | `CACHE_MAX_DISK_GB` |
 
 ### Env Override Rules
 
-- `PLATFORM` selects the base preset (default: `vercel`)
+- `PLATFORM` defaults to `huggingface`
 - Each config key has an optional env var that overrides the preset value
-- Unknown `PLATFORM` values fall back to `vercel`
+- Unknown `PLATFORM` values throw an error
 
 ## Platform Config Module (`lib/platform-config.js`)
 
 ```js
 const PRESETS = {
-  vercel: {
-    maxDimension: 1024,
-    defaultQuality: 85,
-    cache: { type: 'none', maxMemoryMB: 0, maxDiskGB: 0 },
-  },
   huggingface: {
     maxDimension: 2048,
     defaultQuality: 90,
@@ -54,9 +49,12 @@ const PRESETS = {
 };
 
 export function getPlatformConfig(env = process.env) {
-  const platform = env.PLATFORM || 'vercel';
-  const preset = PRESETS[platform] ?? PRESETS.vercel;
-  return applyEnvOverrides(preset, env);
+  const platform = env.PLATFORM || 'huggingface';
+  const preset = PRESETS[platform];
+  if (!preset) {
+    throw new Error(`Unknown platform: ${platform}. Supported platforms: ${Object.keys(PRESETS).join(', ')}`);
+  }
+  return applyEnvOverrides(structuredClone(preset), env);
 }
 ```
 
@@ -101,8 +99,7 @@ Request → L1 memory lookup
 ### Integration with handler.js
 
 - `createImageHandler` receives `platformConfig` parameter
-- When `cache.type === 'none'` (Vercel): no caching, current behavior unchanged
-- When `cache.type === 'lru+disk'` (HF): wrap fetch + process in cache layer
+- Cache layer wraps fetch + process in cache layer
 - Cache layer is transparent to existing fetch/process logic
 
 ## Processing Parameters
@@ -112,7 +109,6 @@ Request → L1 memory lookup
 - `parseParams()` accepts `platformConfig` via options
 - `MAX_DIMENSION` constant replaced by `platformConfig.maxDimension`
 - `DEFAULT_QUALITY` constant replaced by `platformConfig.defaultQuality`
-- Vercel behavior unchanged (same defaults)
 
 ## Environment Variables
 
@@ -120,7 +116,7 @@ Request → L1 memory lookup
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
-| `PLATFORM` | Select platform preset | `vercel` |
+| `PLATFORM` | Select platform preset | `huggingface` |
 | `MAX_DIMENSION` | Override max image dimension | preset value |
 | `DEFAULT_QUALITY` | Override default quality | preset value |
 | `CACHE_MAX_MEMORY_MB` | Override memory cache size | preset value |
@@ -143,10 +139,6 @@ Request → L1 memory lookup
 ENV PLATFORM=huggingface
 ```
 
-### Vercel
-
-No changes needed — `PLATFORM` defaults to `vercel`.
-
 ## Dependencies
 
 - `lru-cache` — Memory caching (new)
@@ -155,4 +147,3 @@ No changes needed — `PLATFORM` defaults to `vercel`.
 
 - No internal concurrency limiting (controlled externally)
 - No sharp memory/threads configuration
-- No Vercel caching (serverless has no persistent state)

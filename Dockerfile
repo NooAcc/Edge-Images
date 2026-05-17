@@ -6,8 +6,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && \
     rm -rf node_modules/ffmpeg-static \
-           node_modules/ffprobe-static \
-           node_modules/@vercel
+           node_modules/ffprobe-static
 
 # ── Stage 2: production image ──
 FROM node:22-alpine

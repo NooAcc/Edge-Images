@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { createImageHandler } from '../api/media.js';
+import { createImageHandler } from '../lib/handler.js';
 import { processImage } from '../lib/process-image.js';
 import { decodeOutput, createFakeSharp, makeImageBytes } from './helpers/fake-sharp.js';
 

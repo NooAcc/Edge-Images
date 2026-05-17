@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { CACHE_CONTROL, PROCESSOR_NAME, createImageHandler } from '../api/media.js';
+import { CACHE_CONTROL, PROCESSOR_NAME, createImageHandler } from '../lib/handler.js';
 import { createCaptureSink } from './helpers/capture-logs.js';
 
 test('api handler returns processed output with cache headers and metadata', async () => {

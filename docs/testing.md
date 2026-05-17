@@ -70,10 +70,10 @@ Integration and system tests:
 
 ## Manual Smoke Test
 
-Run the Vercel dev server:
+Start the server:
 
 ```shell
-npm run vercel:dev
+npm start
 ```
 
 Then open:
@@ -87,4 +87,4 @@ Expected:
 - Status `200`.
 - `Content-Type: image/webp`.
 - `X-Processor: edge-image`.
-- Output dimensions no larger than `1024 x 1024`.
+- Output dimensions no larger than `2048 x 2048`.

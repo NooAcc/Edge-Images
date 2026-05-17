@@ -2,31 +2,48 @@
 
 ## Goals
 
-The service is a small Vercel Node.js API that behaves like a dynamic image CDN:
+The service is a Node.js image and video processing API designed for Docker deployment:
 
-- Fetch a third-party source image.
+- Fetch a third-party source image or video.
 - Apply bounded transforms.
-- Return WebP output.
-- Keep memory and CPU use predictable under Vercel Hobby limits.
-- Use a single native image pipeline for decode, transform, and WebP encode.
+- Return optimized output (WebP, JPEG, PNG, AVIF).
+- Use efficient caching (memory LRU + disk) for performance.
+- Use a single native image pipeline for decode, transform, and encode.
 
 ## Module Map
 
 ```text
-api/media.js
+server.js
+lib/handler.js
+lib/batch.js
 lib/parse-params.js
 lib/fetch-image.js
 lib/image-logger.js
 lib/process-image.js
+lib/process-video.js
+lib/cache.js
+lib/platform-config.js
 ```
 
-`api/media.js`
+`server.js`
 
-- Vercel function entrypoint.
+- Main HTTP server entry point.
+- Routes requests to appropriate handlers.
+- Serves static files (index.html, docs).
+
+`lib/handler.js`
+
+- Main request handler for image/video processing.
 - Validates `GET` requests.
 - Sends JSON errors for bad parameters and failed source fetches.
-- Sends WebP success responses with cache headers.
+- Sends success responses with cache headers.
 - Falls back to the original source bytes when processing fails after fetch.
+
+`lib/batch.js`
+
+- Batch processing handler for multiple images/videos.
+- Validates `POST` requests.
+- Processes up to 20 items per batch.
 
 `lib/parse-params.js`
 
@@ -34,7 +51,7 @@ lib/process-image.js
 - Requires an absolute `http` or `https` source URL supplied by the `/api/media/<encoded-source-url>` path.
 - Rejects the legacy `url` query parameter.
 - Enforces `IMAGE_URL_ALLOWLIST` when configured.
-- Clamps `width` and `height` to `1024`.
+- Clamps `width` and `height` to `2048`.
 - Clamps `quality` to `1..100`.
 - Accepts only sharp native `fit` values: `cover`, `contain`, `fill`, `inside`, and `outside`.
 - Defaults invalid `background` to white.
@@ -74,10 +91,6 @@ lib/process-image.js
 `index.html` and `docs/index.html`
 
 - Serve the static homepage and documentation page.
-- Initialize `window.va` and `window.si` queues before Vercel scripts load.
-- Include Vercel Web Analytics through `/_vercel/insights/script.js`.
-- Include Vercel Speed Insights through `/_vercel/speed-insights/script.js`.
-- These scripts become active after the matching Vercel project features are enabled in the dashboard.
 
 ## Request Flow
 
@@ -120,7 +133,7 @@ Unexpected early error -> 500 JSON
 
 - Default mode.
 - Fits inside the requested box and never enlarges the source image.
-- Uses the `1024 x 1024` max box when dimensions are omitted.
+- Uses the `2048 x 2048` max box when dimensions are omitted.
 
 `cover`
 
@@ -142,31 +155,15 @@ Unexpected early error -> 500 JSON
 
 - Optional source URL allowlist through `IMAGE_URL_ALLOWLIST`.
 - Optional structured debug logs through `IMAGE_DEBUG_LOGS`.
-- Output dimensions are capped at `1024 x 1024`.
+- Output dimensions are capped at `2048 x 2048`.
 - Source response body is capped at 50 MB.
 - Source fetch timeout is 20 seconds.
-- The Vercel function is configured with `maxDuration: 40`.
 
 ## Deployment
 
-The project does not pin a Node.js version in `package.json`; Vercel uses the project default Node.js runtime.
+The project is designed for Docker deployment. The `Dockerfile` configures a multi-stage build:
 
-`vercel.json` configures the path-style API rewrite and function duration:
+1. **Stage 1**: Install dependencies and prune unnecessary packages (ffmpeg-static, ffprobe-static).
+2. **Stage 2**: Production image with system ffmpeg, optimized for size.
 
-```json
-{
-  "rewrites": [
-    {
-      "source": "/api/media/:source*",
-      "destination": "/api/media?source=:source*"
-    }
-  ],
-  "functions": {
-    "api/media.js": {
-      "maxDuration": 40
-    }
-  }
-}
-```
-
-Runtime selection can be changed in the Vercel project settings if a deployment needs a specific Node.js version.
+The server runs on port 3000 by default and can be configured via the `PORT` environment variable.

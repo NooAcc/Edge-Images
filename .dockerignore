@@ -5,4 +5,3 @@ docs
 *.md
 .eslintrc*
 .prettierrc*
-vercel.json

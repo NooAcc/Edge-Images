@@ -30,7 +30,7 @@ pinned: false
 ```shell
 npm install
 npm test
-npm run vercel:dev
+npm start
 ```
 
 ## API
@@ -43,7 +43,7 @@ GET /api/media/<encoded-source-url>
 
 `encoded-source-url` 是经 `encodeURIComponent` 编码的完整 `http` 或 `https` 图片/视频地址。
 
-### 批量处理（仅 Hugging Face 平台）
+### 批量处理
 
 ```text
 POST /api/batch
@@ -104,16 +104,15 @@ Content-Type: application/json
 **限制：**
 - 最多 20 张图片/批次
 - uuid 必须唯一
-- 仅 `PLATFORM=huggingface` 可用
 
 ### 查询参数
 
 | 参数         | 默认值   | 说明                                                                                 |
 | ------------ | -------- | ------------------------------------------------------------------------------------ |
-| `width`      | -        | 目标宽度（px），上限由平台决定（Vercel 1024 / HF 2048）                              |
-| `height`     | -        | 目标高度（px），上限由平台决定（Vercel 1024 / HF 2048）                              |
+| `width`      | -        | 目标宽度（px），上限 2048                                                            |
+| `height`     | -        | 目标高度（px），上限 2048                                                            |
 | `fit`        | `inside` | 缩放模式：`cover`、`contain`、`fill`、`inside`、`outside`                            |
-| `quality`    | 平台默认 | 输出质量，1–100（Vercel 默认 85 / HF 默认 90）                                       |
+| `quality`    | `90`     | 输出质量，1–100                                                                      |
 | `format`     | `webp`   | 输出格式：`webp`、`jpeg`、`png`、`avif`、`json`                                      |
 | `background` | `FFFFFF` | `contain` 模式的十六进制 `RRGGBB` 背景色                                             |
 | `rotate`     | -        | 旋转角度：`90`、`180`、`270`                                                         |
@@ -213,27 +212,20 @@ X-Processor: edge-image
 | 状态码 | 含义                                                             |
 | ------ | ---------------------------------------------------------------- |
 | `400`  | 参数缺失或非法                                                   |
-| `403`  | 批量处理请求在非 huggingface 平台                                |
 | `405`  | 请求方法不是 `GET`（单图）或 `POST`（批量）                      |
 | `502`  | 源媒体无法下载、超时、返回非 2xx、文件过大，或响应不是媒体       |
 | `500`  | 源媒体下载成功前发生未预期错误                                   |
 
 ## 环境变量
 
-### 平台配置
-
-| 变量                 | 默认值   | 说明                                                                   |
-| -------------------- | -------- | ---------------------------------------------------------------------- |
-| `PLATFORM`           | `vercel` | 部署平台：`vercel` 或 `huggingface`，自动选择预设参数和缓存策略        |
-
 ### 平台预设覆盖（可选）
 
-| 变量                 | 说明                                                                   |
-| -------------------- | ---------------------------------------------------------------------- |
-| `MAX_DIMENSION`      | 覆盖最大输出尺寸（px）                                                 |
-| `DEFAULT_QUALITY`    | 覆盖默认输出质量（1–100）                                              |
-| `CACHE_MAX_MEMORY_MB`| 覆盖内存缓存大小（MB）                                                 |
-| `CACHE_MAX_DISK_GB`  | 覆盖磁盘缓存大小（GB）                                                 |
+| 变量                 | 默认值 | 说明                                                                   |
+| -------------------- | ------ | ---------------------------------------------------------------------- |
+| `MAX_DIMENSION`      | `2048` | 覆盖最大输出尺寸（px）                                                 |
+| `DEFAULT_QUALITY`    | `90`   | 覆盖默认输出质量（1–100）                                              |
+| `CACHE_MAX_MEMORY_MB`| `4096` | 覆盖内存缓存大小（MB）                                                 |
+| `CACHE_MAX_DISK_GB`  | `50`   | 覆盖磁盘缓存大小（GB）                                                 |
 
 ### 其他
 
@@ -241,7 +233,7 @@ X-Processor: edge-image
 | -------------------- | ------ | ---------------------------------------------------------------------- |
 | `IMAGE_URL_ALLOWLIST`| -      | 源媒体域名白名单，逗号或空格分隔。留空则允许任意域名                   |
 | `IMAGE_DEBUG_LOGS`   | `0`    | 设为 `1` 启用结构化调试日志                                            |
-| `USE_SYSTEM_FFMPEG`  | `true` | Docker 部署时是否使用系统 ffmpeg，`false` 则使用 ffmpeg-static npm 包   |
+| `USE_SYSTEM_FFMPEG`  | `true` | 是否使用系统 ffmpeg，`false` 则使用 ffmpeg-static npm 包               |
 
 ### 域名白名单
 
@@ -256,9 +248,9 @@ X-Processor: edge-image
 
 ## 部署
 
-### Docker（默认 PLATFORM=huggingface）
+### Docker
 
-Docker 部署自动启用两级缓存（内存 LRU + 磁盘），输出尺寸上限提升至 2048px，默认质量 90。
+Docker 部署自动启用两级缓存（内存 LRU + 磁盘），输出尺寸上限 2048px，默认质量 90。
 
 构建镜像：
 
@@ -278,38 +270,12 @@ docker run -p 3000:3000 -e IMAGE_URL_ALLOWLIST=example.com edge-image
 docker run -p 3000:3000 -v edge-cache:/data -e IMAGE_URL_ALLOWLIST=example.com edge-image
 ```
 
-### Vercel（默认 PLATFORM=vercel）
-
-Vercel 部署无缓存，保持 serverless 轻量特性。
-
-1. 推送到 GitHub 仓库
-2. 在 Vercel 控制台导入仓库，Framework Preset 保持 **Other**
-3. 配置环境变量 `IMAGE_URL_ALLOWLIST`
-4. 部署：
-
-```shell
-vercel deploy --prod
-```
-
-5. 在 Vercel 项目控制台启用 **Analytics** 和 **Speed Insights**，重新部署
-
-## 平台预设对比
-
-| 配置项             | Vercel       | Hugging Face   |
-| ------------------ | ------------ | -------------- |
-| 最大输出尺寸       | 1024px       | 2048px         |
-| 默认质量           | 85           | 90             |
-| 批量处理           | 不支持       | 支持（最多 20 张） |
-| 缓存策略           | 无           | 内存 LRU + 磁盘 |
-| 内存缓存           | -            | 4096 MB        |
-| 磁盘缓存           | -            | 50 GB          |
-
 ## 调试
 
 设置 `IMAGE_DEBUG_LOGS=1` 后，服务输出以 `[image]` 开头的 JSON 日志，包含请求参数、源媒体下载状态、处理路径和降级原因。
 
 ```shell
-IMAGE_DEBUG_LOGS=1 npm run vercel:dev
+IMAGE_DEBUG_LOGS=1 npm start
 ```
 
 常见日志含义：
