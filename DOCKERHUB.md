@@ -28,6 +28,7 @@ curl "http://localhost:3000/api/media/https%3A%2F%2Fexample.com%2Fphoto.jpg?widt
 | 变量                  | 默认值 | 说明                                       |
 | --------------------- | ------ | ------------------------------------------ |
 | `IMAGE_URL_ALLOWLIST` | -      | 源媒体域名白名单，逗号分隔。留空允许任意域名 |
+| `BATCH_CONCURRENCY`   | `4`    | 批量处理图片处理阶段的全局并发数           |
 | `IMAGE_DEBUG_LOGS`    | `0`    | 设为 `1` 启用调试日志                      |
 | `USE_SYSTEM_FFMPEG`   | `true` | 使用系统 ffmpeg，`false` 则用 ffmpeg-static |
 

@@ -148,7 +148,7 @@
           </article>
           <article class="card">
             <h3>批量处理</h3>
-            <p>一次请求处理多张图片或视频，全部完成后返回结果（Hugging Face 平台）</p>
+            <p>两阶段队列：先并发下载源媒体，再限流处理，支持全局并发控制</p>
           </article>
           <article class="card">
             <h3>视频封面</h3>
@@ -218,7 +218,7 @@
             </tr>
             <tr style="border-bottom:1px solid var(--line);">
               <td style="padding:8px 12px;">批量处理</td>
-              <td style="padding:8px 12px;">支持（最多 20 张）</td>
+              <td style="padding:8px 12px;">支持（最多 20 张，处理并发 4）</td>
             </tr>
             <tr style="border-bottom:1px solid var(--line);">
               <td style="padding:8px 12px;">缓存策略</td>
