@@ -1,10 +1,21 @@
 services:
-  app:
+  edge-image:
     build: .
     ports:
-      - "${PORT:-3000}:3000"
+      - "3000:3000"
+    volumes:
+      - edge-cache:/data
     environment:
       - PORT=3000
-      - IMAGE_URL_ALLOWLIST
-      - IMAGE_DEBUG_LOGS
+      - PLATFORM=huggingface
+      - IMAGE_URL_ALLOWLIST=
+      - MAX_DIMENSION=2048
+      - DEFAULT_QUALITY=90
+      - BATCH_CONCURRENCY=4
+      - CACHE_MAX_MEMORY_MB=4096
+      - CACHE_MAX_DISK_GB=50
+      - IMAGE_DEBUG_LOGS=0
     restart: unless-stopped
+
+volumes:
+  edge-cache:

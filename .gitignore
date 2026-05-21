@@ -1,9 +1,36 @@
+# Go Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+edge-image
+
+# Go test binary
+*.test
+*.out
+go.work
+
+# Node.js (OLD/)
 node_modules/
 coverage/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
 .DS_Store
-.trae
-.claude
+Thumbs.db
+
+# Environment
+.env
+
+# Cache directory
+/data/

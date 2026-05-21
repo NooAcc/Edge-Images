@@ -1,29 +1,42 @@
-# ── Stage 1: install deps & prune ──
-FROM node:22-alpine AS deps
+FROM golang:1.22-bookworm AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config \
+    libvips-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && \
-    rm -rf node_modules/ffmpeg-static \
-           node_modules/ffprobe-static
+COPY go.mod go.sum ./
+RUN go mod download
 
-# ── Stage 2: production image ──
-FROM node:22-alpine
-
-RUN apk add --no-cache ffmpeg
-
-WORKDIR /app
-
-COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-ENV USE_SYSTEM_FFMPEG=true
-ENV FFMPEG_PATH=/usr/bin/ffmpeg
-ENV FFPROBE_PATH=/usr/bin/ffprobe
+RUN CGO_ENABLED=1 GOOS=linux go build -o /app/edge-image ./cmd/server
+
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libvips42 \
+    ffmpeg \
+    ca-certificates \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY --from=builder /app/edge-image /app/edge-image
+COPY public /app/public
+
+RUN mkdir -p /data
+
 ENV PORT=3000
 ENV PLATFORM=huggingface
+ENV PUBLIC_DIR=/app/public
 
 EXPOSE 3000
 
-CMD ["node", "server.js"]
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:3000/healthz || exit 1
+
+ENTRYPOINT ["/app/edge-image"]
