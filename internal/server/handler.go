@@ -246,6 +246,13 @@ func (h *Handler) handleMetadata(w http.ResponseWriter, p *params.Params, isVide
 				}
 				sourceBuffer = fullResult.Buffer
 				sourceContentType = fullResult.ContentType
+				if h.cache != nil {
+					sourceKey := cache.BuildCacheKey("source", p.URL)
+					h.cache.Set(sourceKey, &cache.Entry{
+						Buffer:      sourceBuffer,
+						ContentType: sourceContentType,
+					})
+				}
 				meta, err = processor.ProbeImageMetadata(sourceBuffer, log)
 				if err != nil {
 					sendJSON(w, http.StatusBadGateway, map[string]string{
