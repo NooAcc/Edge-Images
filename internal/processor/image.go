@@ -109,23 +109,27 @@ func ProcessImage(source []byte, params ImageParams, log *slog.Logger) (*ImageRe
 		}
 	}
 
-	exportParams := &vips.ExportParams{
-		Quality:       params.Quality,
-		StripMetadata: true,
-	}
-
 	var buf []byte
 	switch params.Format {
-	case "webp":
-		buf, _, err = image.ExportWebp(exportParams)
 	case "jpeg":
-		buf, _, err = image.ExportJpeg(exportParams)
+		buf, _, err = image.ExportJpeg(&vips.JpegExportParams{
+			Quality:       params.Quality,
+			StripMetadata: true,
+		})
 	case "png":
-		buf, _, err = image.ExportPng(exportParams)
+		buf, _, err = image.ExportPng(&vips.PngExportParams{
+			StripMetadata: true,
+		})
 	case "avif":
-		buf, _, err = image.ExportAvif(exportParams)
+		buf, _, err = image.ExportAvif(&vips.AvifExportParams{
+			Quality:       params.Quality,
+			StripMetadata: true,
+		})
 	default:
-		buf, _, err = image.ExportWebp(exportParams)
+		buf, _, err = image.ExportWebp(&vips.WebpExportParams{
+			Quality:       params.Quality,
+			StripMetadata: true,
+		})
 	}
 
 	if err != nil {
@@ -199,7 +203,7 @@ func resizeImage(image *vips.ImageRef, width, height int, fit string, bg [3]uint
 			scale = scaleY
 		}
 	case "fill":
-		return image.ResizeWithKernel(scaleX, vips.KernelLanczos3, vips.KernelAuto)
+		return image.Resize(scaleX, vips.KernelLanczos3)
 	case "outside":
 		if scaleX > scaleY {
 			scale = scaleX
@@ -223,5 +227,5 @@ func resizeImage(image *vips.ImageRef, width, height int, fit string, bg [3]uint
 		kernel = vips.KernelLinear
 	}
 
-	return image.ResizeWithKernel(scale, kernel, vips.KernelAuto)
+	return image.Resize(scale, kernel)
 }
