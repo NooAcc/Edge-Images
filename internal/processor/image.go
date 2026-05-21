@@ -3,6 +3,7 @@ package processor
 import (
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/davidbyttow/govips/v2/vips"
 )
@@ -181,7 +182,7 @@ func ProbeImageMetadata(source []byte, log *slog.Logger) (*ImageMetadata, error)
 	return &ImageMetadata{
 		Width:    image.Width(),
 		Height:   image.Height(),
-		Format:   string(image.Format()),
+		Format:   strings.TrimPrefix(image.Format().FileExt(), "."),
 		Channels: 4,
 	}, nil
 }
