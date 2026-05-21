@@ -1,3 +1,13 @@
+---
+title: Edge Images
+emoji: 🖼️
+colorFrom: blue
+colorTo: green
+sdk: docker
+app_port: 3000
+pinned: false
+---
+
 # Edge Image (Go)
 
 Go 语言重写的图片和视频处理服务。下载远程媒体，按参数执行缩放、裁剪、填充等处理，返回优化后的输出。
