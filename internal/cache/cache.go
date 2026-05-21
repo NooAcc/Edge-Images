@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -9,8 +10,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/cockroachdb/pebble"
-	"github.com/cockroachdb/pebble/bloom"
+	"github.com/cockroachdb/pebble/v2"
+	"github.com/cockroachdb/pebble/v2/bloom"
 	"github.com/dgraph-io/ristretto/v2"
 )
 
@@ -46,8 +47,9 @@ func New(maxMemoryMB, maxDiskGB int, cacheDir string, log *slog.Logger) (*Cache,
 	if maxDiskGB > 0 && cacheDir != "" {
 		c.maxBytes = int64(maxDiskGB) * 1024 * 1024 * 1024
 		db, err := pebble.Open(cacheDir, &pebble.Options{
-			DisableWAL: true,
-			Levels: []pebble.LevelOptions{
+			DisableWAL:         true,
+			FormatMajorVersion: pebble.FormatColumnarBlocks,
+			Levels: [7]pebble.LevelOptions{
 				{FilterPolicy: bloom.FilterPolicy(10)},
 			},
 			Logger: pebble.DefaultLogger,
@@ -116,10 +118,14 @@ func (c *Cache) Cleanup() {
 	}
 
 	var entries []entryInfo
-	iter := c.db.NewIter(&pebble.IterOptions{
+	iter, err := c.db.NewIter(&pebble.IterOptions{
 		LowerBound: []byte{0},
 		UpperBound: []byte{0xff},
 	})
+	if err != nil {
+		c.log.Warn("cache: create iterator failed", "error", err)
+		return
+	}
 	defer iter.Close()
 
 	for iter.First(); iter.Valid(); iter.Next() {
@@ -156,7 +162,7 @@ func (c *Cache) Cleanup() {
 
 	if freed > 0 {
 		c.log.Info("cache: cleanup completed", "freedMB", freed/1024/1024)
-		c.db.Compact([]byte{0}, []byte{0xff}, true)
+		c.db.Compact(context.Background(), []byte{0}, []byte{0xff}, true)
 	}
 }
 
