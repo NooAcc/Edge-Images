@@ -320,7 +320,7 @@ test('probeImageMetadataFromUrl returns source metadata from the image prefix', 
     },
   });
 
-  assert.equal(requestOptions.headers.Range, 'bytes=0-5119');
+  assert.equal(requestOptions.headers.Range, 'bytes=0-65535');
   assert.equal(metadata.width, 800);
   assert.equal(metadata.height, 600);
   assert.equal(metadata.format, 'png');

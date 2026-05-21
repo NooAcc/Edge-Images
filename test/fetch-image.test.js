@@ -160,7 +160,7 @@ test('fetchImageMetadataRange requests only the image metadata prefix', async ()
     },
   });
 
-  assert.equal(requestOptions.headers.Range, 'bytes=0-5119');
+  assert.equal(requestOptions.headers.Range, 'bytes=0-65535');
   assert.equal(result.contentType, 'image/jpeg');
   assert.equal(result.buffer.toString(), 'jpeg');
   assert.equal(result.sourceSize, 12345);
@@ -212,16 +212,16 @@ test('fetchImageMetadataRange retries retryable statuses and preserves Range', a
   const retry = capture.records().find((record) => record.event === 'image.metadata.fetch_retry');
 
   assert.equal(calls, 2);
-  assert.equal(requestOptions[0].headers.Range, 'bytes=0-5119');
-  assert.equal(requestOptions[1].headers.Range, 'bytes=0-5119');
+  assert.equal(requestOptions[0].headers.Range, 'bytes=0-65535');
+  assert.equal(requestOptions[1].headers.Range, 'bytes=0-65535');
   assert.equal(retry.attempt, 1);
   assert.equal(retry.status, 403);
   assert.equal(result.buffer.toString(), 'jpeg');
   assert.equal(result.sourceSize, 12345);
 });
 
-test('fetchImageMetadataRange stops after 5KB when Range is ignored', async () => {
-  const body = createStreamBody(createFixedChunks(10, 1024));
+test('fetchImageMetadataRange stops after 64KB when Range is ignored', async () => {
+  const body = createStreamBody(createFixedChunks(100, 1024));
 
   const result = await fetchImageMetadataRange('https://example.com/photo.jpg', {
     fetchImpl: async () =>
@@ -231,14 +231,14 @@ test('fetchImageMetadataRange stops after 5KB when Range is ignored', async () =
         body,
         headers: {
           'content-type': 'image/jpeg',
-          'content-length': String(10 * 1024),
+          'content-length': String(100 * 1024),
         },
       }),
   });
 
   assert.equal(result.buffer.length, DEFAULT_IMAGE_METADATA_BYTES);
-  assert.equal(result.sourceSize, 10 * 1024);
-  assert.equal(body.readCount, 5);
+  assert.equal(result.sourceSize, 100 * 1024);
+  assert.equal(body.readCount, 64);
   assert.equal(body.cancelled, true);
 });
 
