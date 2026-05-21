@@ -24,6 +24,7 @@ pnpm-debug.log*
 .vscode/
 *.swp
 *.swo
+.trae
 
 # OS
 .DS_Store
