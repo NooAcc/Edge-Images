@@ -19,7 +19,7 @@ Go 语言重写的图片和视频处理服务。下载远程媒体，按参数�
 - `format=json` 返回图片或视频元信息
 - 批量处理：两阶段队列处理，先并发下载再限流处理
 - 平台感知配置：根据部署平台自动调整参数和缓存策略
-- 两级缓存（ristretto 内存 LRU + bbolt 磁盘）：Docker 部署下自动启用
+- 两级缓存（ristretto 内存 LRU + Pebble 磁盘）：Docker 部署下自动启用
 - 20 秒源媒体下载超时
 - 处理失败时降级返回原图
 - 响应头包含 CDN 缓存控制和媒体元信息
@@ -100,7 +100,7 @@ Content-Type: application/json
 cmd/server/main.go     — 入口，初始化所有组件
 internal/
   config/              — 平台配置和环境变量
-  cache/               — 两级缓存（ristretto + bbolt）
+  cache/               — 两级缓存（ristretto + Pebble）
   processor/           — 图片处理（govips）和视频处理（ffmpeg）
   fetcher/             — HTTP 下载，重试，Range 请求
   params/              — 查询参数解析
@@ -115,6 +115,6 @@ public/                — 前端静态文件
 1. **goroutine 并发模型**：每个请求一个 goroutine，I/O 等待不阻塞 CPU
 2. **govips (libvips)**：底层和 sharp 相同，但 CGO 调用开销更小
 3. **ristretto 缓存**：基于 LFU 变体，命中率高于手动 LRU
-4. **bbolt 磁盘缓存**：B+树引擎，无文件碎片，崩溃安全
+4. **Pebble 磁盘缓存**：LSM-tree 引擎，自动 compaction 回收空间
 5. **编译为静态二进制**：Docker 镜像更小，启动更快
 6. **优雅关闭**：drain 现有请求后退出

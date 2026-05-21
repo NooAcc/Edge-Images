@@ -116,14 +116,10 @@ func (c *Cache) Cleanup() {
 	}
 
 	var entries []entryInfo
-	iter, err := c.db.NewIter(&pebble.IterOptions{
+	iter := c.db.NewIter(&pebble.IterOptions{
 		LowerBound: []byte{0},
 		UpperBound: []byte{0xff},
 	})
-	if err != nil {
-		c.log.Warn("cache: cleanup iterator failed", "error", err)
-		return
-	}
 	defer iter.Close()
 
 	for iter.First(); iter.Valid(); iter.Next() {
