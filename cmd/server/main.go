@@ -48,7 +48,7 @@ func main() {
 				"memoryMB", cfg.Cache.MaxMemoryMB,
 				"diskGB", cfg.Cache.MaxDiskGB,
 			)
-			c.Cleanup(cfg.Cache.MaxDiskGB)
+			c.Cleanup()
 		}
 	}
 	if c != nil {
