@@ -36,7 +36,7 @@ ENV PUBLIC_DIR=/app/public
 
 EXPOSE 3000
 
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:3000/healthz || exit 1
 
 ENTRYPOINT ["/app/edge-image"]

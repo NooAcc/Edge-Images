@@ -7,7 +7,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"os"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -21,10 +23,13 @@ type Entry struct {
 }
 
 type Cache struct {
-	mem      *ristretto.Cache[string, *Entry]
-	db       *pebble.DB
-	maxBytes int64
-	log      *slog.Logger
+	mem        *ristretto.Cache[string, *Entry]
+	db         *pebble.DB
+	cacheDir   string
+	maxBytes   int64
+	log        *slog.Logger
+	mu         sync.RWMutex
+	rebuildOnce sync.Once
 }
 
 func New(maxMemoryMB, maxDiskGB int, cacheDir string, log *slog.Logger) (*Cache, error) {
@@ -46,21 +51,34 @@ func New(maxMemoryMB, maxDiskGB int, cacheDir string, log *slog.Logger) (*Cache,
 
 	if maxDiskGB > 0 && cacheDir != "" {
 		c.maxBytes = int64(maxDiskGB) * 1024 * 1024 * 1024
-		db, err := pebble.Open(cacheDir, &pebble.Options{
-			DisableWAL:         true,
-			FormatMajorVersion: pebble.FormatColumnarBlocks,
-			Levels: [7]pebble.LevelOptions{
-				{FilterPolicy: bloom.FilterPolicy(10)},
-			},
-			Logger: pebble.DefaultLogger,
-		})
+		c.cacheDir = cacheDir
+		db, err := c.openPebble(cacheDir)
 		if err != nil {
-			return nil, fmt.Errorf("open pebble: %w", err)
+			c.log.Warn("cache: pebble open failed, clearing and retrying", "error", err)
+			if rmErr := os.RemoveAll(cacheDir); rmErr != nil {
+				return nil, fmt.Errorf("remove corrupt pebble dir: %w", rmErr)
+			}
+			db, err = c.openPebble(cacheDir)
+			if err != nil {
+				return nil, fmt.Errorf("open pebble after cleanup: %w", err)
+			}
+			c.log.Info("cache: pebble rebuilt after corruption")
 		}
 		c.db = db
 	}
 
 	return c, nil
+}
+
+func (c *Cache) openPebble(dir string) (*pebble.DB, error) {
+	return pebble.Open(dir, &pebble.Options{
+		DisableWAL:         true,
+		FormatMajorVersion: pebble.FormatColumnarBlocks,
+		Levels: [7]pebble.LevelOptions{
+			{FilterPolicy: bloom.FilterPolicy(10)},
+		},
+		Logger: pebble.DefaultLogger,
+	})
 }
 
 func (c *Cache) Get(key string) (*Entry, bool) {
@@ -70,8 +88,12 @@ func (c *Cache) Get(key string) (*Entry, bool) {
 		}
 	}
 
-	if c.db != nil {
-		val, closer, err := c.db.Get([]byte(key))
+	c.mu.RLock()
+	db := c.db
+	c.mu.RUnlock()
+
+	if db != nil {
+		val, closer, err := db.Get([]byte(key))
 		if err == nil {
 			entry, ok := decodeEntry(val)
 			closer.Close()
@@ -81,6 +103,9 @@ func (c *Cache) Get(key string) (*Entry, bool) {
 				}
 				return entry, true
 			}
+		} else if err != pebble.ErrNotFound {
+			c.log.Warn("cache: pebble read error", "key", key, "error", err)
+			c.triggerRebuild()
 		}
 	}
 
@@ -88,9 +113,13 @@ func (c *Cache) Get(key string) (*Entry, bool) {
 }
 
 func (c *Cache) Set(key string, entry *Entry) {
-	if c.db != nil {
+	c.mu.RLock()
+	db := c.db
+	c.mu.RUnlock()
+
+	if db != nil {
 		data := encodeEntry(entry)
-		if err := c.db.Set([]byte(key), data, pebble.NoSync); err != nil {
+		if err := db.Set([]byte(key), data, pebble.NoSync); err != nil {
 			c.log.Warn("cache: pebble write failed", "error", err)
 			return
 		}
@@ -102,12 +131,17 @@ func (c *Cache) Set(key string, entry *Entry) {
 }
 
 func (c *Cache) Cleanup() {
-	if c.db == nil || c.maxBytes <= 0 {
+	c.mu.RLock()
+	db := c.db
+	maxBytes := c.maxBytes
+	c.mu.RUnlock()
+
+	if db == nil || maxBytes <= 0 {
 		return
 	}
 
-	usage := c.db.Metrics().DiskSpaceUsage()
-	if usage <= uint64(c.maxBytes) {
+	usage := db.Metrics().DiskSpaceUsage()
+	if usage <= uint64(maxBytes) {
 		return
 	}
 
@@ -118,7 +152,7 @@ func (c *Cache) Cleanup() {
 	}
 
 	var entries []entryInfo
-	iter, err := c.db.NewIter(&pebble.IterOptions{
+	iter, err := db.NewIter(&pebble.IterOptions{
 		LowerBound: []byte{0},
 		UpperBound: []byte{0xff},
 	})
@@ -147,13 +181,13 @@ func (c *Cache) Cleanup() {
 		return entries[i].timestamp < entries[j].timestamp
 	})
 
-	targetBytes := c.maxBytes * 9 / 10 // reclaim to 90%
+	targetBytes := maxBytes * 9 / 10 // reclaim to 90%
 	var freed int64
 	for _, e := range entries {
 		if usage-uint64(freed) <= uint64(targetBytes) {
 			break
 		}
-		if err := c.db.Delete(e.key, pebble.NoSync); err != nil {
+		if err := db.Delete(e.key, pebble.NoSync); err != nil {
 			c.log.Warn("cache: cleanup delete failed", "error", err)
 			continue
 		}
@@ -162,7 +196,7 @@ func (c *Cache) Cleanup() {
 
 	if freed > 0 {
 		c.log.Info("cache: cleanup completed", "freedMB", freed/1024/1024)
-		c.db.Compact(context.Background(), []byte{0}, []byte{0xff}, true)
+		db.Compact(context.Background(), []byte{0}, []byte{0xff}, true)
 	}
 }
 
@@ -170,10 +204,50 @@ func (c *Cache) Close() {
 	if c.mem != nil {
 		c.mem.Close()
 	}
-	if c.db != nil {
-		c.db.Flush()
-		c.db.Close()
+	c.mu.Lock()
+	db := c.db
+	c.db = nil
+	c.mu.Unlock()
+
+	if db != nil {
+		if err := db.Flush(); err != nil {
+			c.log.Warn("cache: pebble flush failed", "error", err)
+		}
+		if err := db.Close(); err != nil {
+			c.log.Warn("cache: pebble close failed", "error", err)
+		}
 	}
+}
+
+func (c *Cache) triggerRebuild() {
+	if c.cacheDir == "" {
+		return
+	}
+	c.rebuildOnce.Do(func() {
+		c.log.Warn("cache: triggering rebuild due to corruption", "dir", c.cacheDir)
+
+		c.mu.Lock()
+		oldDB := c.db
+		c.db = nil
+		c.mu.Unlock()
+
+		if oldDB != nil {
+			oldDB.Close()
+		}
+		if err := os.RemoveAll(c.cacheDir); err != nil {
+			c.log.Error("cache: failed to remove corrupt dir", "error", err)
+			return
+		}
+		db, err := c.openPebble(c.cacheDir)
+		if err != nil {
+			c.log.Error("cache: failed to reopen pebble after rebuild", "error", err)
+			return
+		}
+		c.mu.Lock()
+		c.db = db
+		c.mu.Unlock()
+		c.log.Info("cache: pebble rebuilt successfully")
+	})
 }
 
 // encodeEntry serializes an Entry to binary format:

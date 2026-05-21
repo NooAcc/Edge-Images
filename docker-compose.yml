@@ -16,6 +16,7 @@ services:
       - CACHE_MAX_DISK_GB=50
       - IMAGE_DEBUG_LOGS=0
     restart: unless-stopped
+    stop_grace_period: 35s
 
 volumes:
   edge-cache:
