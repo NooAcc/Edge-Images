@@ -10,8 +10,12 @@ import (
 	"edge-image/internal/config"
 )
 
-var supportedFits = map[string]bool{
-	"cover": true, "contain": true, "fill": true, "inside": true, "outside": true,
+var supportedCrops = map[string]bool{
+	"none": true, "centre": true, "attention": true, "entropy": true,
+}
+
+var supportedSizes = map[string]bool{
+	"both": true, "down": true, "up": true, "force": true,
 }
 
 var supportedFormats = map[string]bool{
@@ -30,7 +34,8 @@ type Params struct {
 	URL           string
 	Width         int
 	Height        int
-	Fit           string
+	Crop          string
+	Size          string
 	Quality       int
 	Format        string
 	Background    [3]uint8
@@ -66,8 +71,9 @@ func Parse(sourceURL string, query url.Values, cfg config.PlatformConfig, al *al
 
 	width := parseDimension(query.Get("width"), maxDimension)
 	height := parseDimension(query.Get("height"), maxDimension)
+	crop := parseCrop(query.Get("crop"))
+	size := parseSize(query.Get("size"))
 	quality := parseQuality(query.Get("quality"), defaultQuality)
-	fit := parseFit(query.Get("fit"))
 	format := parseFormat(query.Get("format"))
 	background := parseBackground(query.Get("background"))
 	rotate := parseRotation(query.Get("rotate"))
@@ -77,7 +83,8 @@ func Parse(sourceURL string, query url.Values, cfg config.PlatformConfig, al *al
 		URL:           parsedURL.String(),
 		Width:         width,
 		Height:        height,
-		Fit:           fit,
+		Crop:          crop,
+		Size:          size,
 		Quality:       quality,
 		Format:        format,
 		Background:    background.rgb,
@@ -117,6 +124,30 @@ func parseDimension(raw string, maxDimension int) int {
 	return v
 }
 
+func parseCrop(raw string) string {
+	if raw == "" {
+		return "none"
+	}
+
+	v := strings.ToLower(raw)
+	if supportedCrops[v] {
+		return v
+	}
+	return "none"
+}
+
+func parseSize(raw string) string {
+	if raw == "" {
+		return "both"
+	}
+
+	v := strings.ToLower(raw)
+	if supportedSizes[v] {
+		return v
+	}
+	return "both"
+}
+
 func parseQuality(raw string, defaultQuality int) int {
 	if raw == "" {
 		return defaultQuality
@@ -134,18 +165,6 @@ func parseQuality(raw string, defaultQuality int) int {
 		return 100
 	}
 	return v
-}
-
-func parseFit(raw string) string {
-	if raw == "" {
-		return "inside"
-	}
-
-	v := strings.ToLower(raw)
-	if supportedFits[v] {
-		return v
-	}
-	return "inside"
 }
 
 func parseFormat(raw string) string {

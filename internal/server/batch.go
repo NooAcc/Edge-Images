@@ -245,7 +245,8 @@ func (h *BatchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			procParams := processor.ImageParams{
 				Width:             p.Width,
 				Height:            p.Height,
-				Fit:               p.Fit,
+				Crop:              p.Crop,
+				Size:              p.Size,
 				Quality:           p.Quality,
 				Format:            p.Format,
 				Rotate:            p.Rotate,

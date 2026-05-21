@@ -128,7 +128,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	procParams := processor.ImageParams{
 		Width:             p.Width,
 		Height:            p.Height,
-		Fit:               p.Fit,
+		Crop:              p.Crop,
+		Size:              p.Size,
 		Quality:           p.Quality,
 		Format:            p.Format,
 		Rotate:            p.Rotate,
@@ -386,6 +387,6 @@ func sendJSON(w http.ResponseWriter, status int, data interface{}) {
 func buildProcessedCacheKey(p *params.Params) string {
 	return cache.BuildCacheKey("processed", p.URL,
 		fmt.Sprintf("%d", p.Width), fmt.Sprintf("%d", p.Height),
-		p.Fit, fmt.Sprintf("%d", p.Quality), p.Format,
+		p.Crop, p.Size, fmt.Sprintf("%d", p.Quality), p.Format,
 		fmt.Sprintf("%d", p.Rotate), p.Flip)
 }

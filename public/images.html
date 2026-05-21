@@ -37,7 +37,7 @@
         <h2 id="quickstart-title">快速调用</h2>
         <div class="endpoint">
           <code id="image-example"
-            >/api/media/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=800&amp;height=600&amp;fit=cover</code
+            >/api/media/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=800&amp;height=600&amp;crop=centre</code
           >
           <button class="copy" type="button" data-copy="#image-example">复制</button>
         </div>
@@ -46,7 +46,7 @@
       <section aria-labelledby="html-title">
         <h2 id="html-title">HTML 示例</h2>
         <pre><code>&lt;img
-  src="/api/media/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=800&amp;height=600&amp;fit=cover"
+  src="/api/media/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=800&amp;height=600&amp;crop=centre"
   alt="示例图片"
 &gt;</code></pre>
       </section>
@@ -82,12 +82,12 @@
         <div class="panel">
           <ul>
             <li>
-              <strong>卡片缩略图</strong>：<code>width=640&amp;height=360&amp;fit=cover</code>
+              <strong>卡片缩略图</strong>：<code>width=640&amp;height=360&amp;crop=centre</code>
             </li>
-            <li><strong>头像</strong>：<code>width=256&amp;height=256&amp;fit=inside</code></li>
+            <li><strong>头像</strong>：<code>width=256&amp;height=256&amp;size=down</code></li>
             <li>
               <strong>商品图</strong>：<code
-                >width=800&amp;height=800&amp;fit=contain&amp;background=FFFFFF</code
+                >width=800&amp;height=800&amp;background=FFFFFF</code
               >
             </li>
             <li><strong>低带宽预览</strong>：<code>width=480&amp;quality=50</code></li>
@@ -117,11 +117,18 @@
               <td>按源媒体推断</td>
             </tr>
             <tr>
-              <td><code>fit</code></td>
+              <td><code>crop</code></td>
               <td>
-                <code>inside</code>、<code>cover</code>、<code>contain</code>、<code>fill</code>、<code>outside</code>
+                裁剪策略：<code>none</code>、<code>centre</code>、<code>attention</code>、<code>entropy</code>
               </td>
-              <td><code>inside</code></td>
+              <td><code>none</code></td>
+            </tr>
+            <tr>
+              <td><code>size</code></td>
+              <td>
+                缩放行为：<code>both</code>、<code>down</code>、<code>up</code>、<code>force</code>
+              </td>
+              <td><code>both</code></td>
             </tr>
             <tr>
               <td><code>quality</code></td>
@@ -156,7 +163,7 @@
     </main>
 
     <footer>
-      <div class="shell">Powered by Node.js, sharp, and ffmpeg</div>
+      <div class="shell">Powered by Go, govips, and ffmpeg</div>
     </footer>
 
     <script>

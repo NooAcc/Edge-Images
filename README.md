@@ -73,10 +73,11 @@ Content-Type: application/json
 | ------------ | -------- | -------------------------------------------------------- |
 | `width`      | -        | 目标宽度（px），上限 2048                                |
 | `height`     | -        | 目标高度（px），上限 2048                                |
-| `fit`        | `inside` | 缩放模式：`cover`、`contain`、`fill`、`inside`、`outside`|
+| `crop`       | `none`   | 裁剪策略：`none`、`centre`、`attention`、`entropy`       |
+| `size`       | `both`   | 缩放行为：`both`、`down`、`up`、`force`                  |
 | `quality`    | `90`     | 输出质量，1–100                                          |
 | `format`     | `webp`   | 输出格式：`webp`、`jpeg`、`png`、`avif`、`json`          |
-| `background` | `FFFFFF` | `contain` 模式的十六进制 `RRGGBB` 背景色                 |
+| `background` | `FFFFFF` | 填充背景色，RRGGBB 格式，用于 `crop=none` 时的填充       |
 | `rotate`     | -        | 旋转角度：`90`、`180`、`270`                             |
 | `flip`       | -        | 翻转方向：`h`、`v`、`hv`                                 |
 

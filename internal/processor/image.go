@@ -15,16 +15,17 @@ var FormatContentTypes = map[string]string{
 }
 
 type ImageParams struct {
-	Width              int
-	Height             int
-	Fit                string
-	Quality            int
-	Format             string
-	Rotate             int
-	Flip               string
-	Background         [3]uint8
-	MaxDimension       int
-	SourceContentType  string
+	Width             int
+	Height            int
+	Crop              string
+	Size              string
+	Quality           int
+	Format            string
+	Rotate            int
+	Flip              string
+	Background        [3]uint8
+	MaxDimension      int
+	SourceContentType string
 }
 
 type ImageResult struct {
@@ -65,7 +66,8 @@ func ProcessImage(source []byte, params ImageParams, log *slog.Logger) (*ImageRe
 		"sourceBytes", len(source),
 		"width", params.Width,
 		"height", params.Height,
-		"fit", params.Fit,
+		"crop", params.Crop,
+		"size", params.Size,
 		"quality", params.Quality,
 		"format", params.Format,
 	)
@@ -107,7 +109,7 @@ func ProcessImage(source []byte, params ImageParams, log *slog.Logger) (*ImageRe
 	}
 
 	if params.Width > 0 || params.Height > 0 {
-		if err := resizeImage(image, params.Width, params.Height, params.Fit, params.Background); err != nil {
+		if err := resizeImage(image, params.Width, params.Height, params.Crop, params.Size, params.Background, params.MaxDimension); err != nil {
 			return nil, fmt.Errorf("resize: %w", err)
 		}
 	}
@@ -116,22 +118,36 @@ func ProcessImage(source []byte, params ImageParams, log *slog.Logger) (*ImageRe
 	switch params.Format {
 	case "jpeg":
 		buf, _, err = image.ExportJpeg(&vips.JpegExportParams{
-			Quality:       params.Quality,
-			StripMetadata: true,
+			Quality:            params.Quality,
+			StripMetadata:      true,
+			Interlace:          true,
+			OptimizeCoding:     true,
+			SubsampleMode:      vips.VipsForeignSubsampleAuto,
+			TrellisQuant:       true,
+			OvershootDeringing: true,
+			OptimizeScans:      true,
 		})
 	case "png":
 		buf, _, err = image.ExportPng(&vips.PngExportParams{
 			StripMetadata: true,
+			Compression:   6,
+			Interlace:     false,
+			Filter:        vips.PngFilterNone,
+			Palette:       false,
 		})
 	case "avif":
 		buf, _, err = image.ExportAvif(&vips.AvifExportParams{
 			Quality:       params.Quality,
 			StripMetadata: true,
+			Effort:        4,
+			Bitdepth:      8,
 		})
 	default:
 		buf, _, err = image.ExportWebp(&vips.WebpExportParams{
-			Quality:       params.Quality,
-			StripMetadata: true,
+			Quality:         params.Quality,
+			StripMetadata:   true,
+			ReductionEffort: 4,
+			MinSize:         true,
 		})
 	}
 
@@ -170,65 +186,77 @@ func ProbeImageMetadata(source []byte, log *slog.Logger) (*ImageMetadata, error)
 	}, nil
 }
 
-func resizeImage(image *vips.ImageRef, width, height int, fit string, bg [3]uint8) error {
+func resizeImage(image *vips.ImageRef, width, height int, crop, size string, bg [3]uint8, maxDimension int) error {
 	if width == 0 && height == 0 {
 		return nil
 	}
 
-	srcW := float64(image.Width())
-	srcH := float64(image.Height())
-
-	targetW := float64(width)
-	targetH := float64(height)
+	targetW := width
+	targetH := height
 
 	if targetW == 0 {
-		targetW = srcW * targetH / srcH
+		targetW = maxDimension
 	}
 	if targetH == 0 {
-		targetH = srcH * targetW / srcW
+		targetH = maxDimension
 	}
 
-	scaleX := targetW / srcW
-	scaleY := targetH / srcH
+	interesting := mapCropToInteresting(crop)
+	sizeMode := mapSizeToSize(size)
 
-	var scale float64
-	switch fit {
-	case "cover":
-		if scaleX > scaleY {
-			scale = scaleX
-		} else {
-			scale = scaleY
+	if err := image.ThumbnailWithSize(targetW, targetH, interesting, sizeMode); err != nil {
+		return fmt.Errorf("thumbnail: %w", err)
+	}
+
+	if crop == "none" && (bg[0] != 255 || bg[1] != 255 || bg[2] != 255) {
+		actualW := image.Width()
+		actualH := image.Height()
+
+		canvasW := width
+		if canvasW == 0 {
+			canvasW = actualW
 		}
-	case "contain", "inside":
-		if scaleX < scaleY {
-			scale = scaleX
-		} else {
-			scale = scaleY
+		canvasH := height
+		if canvasH == 0 {
+			canvasH = actualH
 		}
-	case "fill":
-		return image.Resize(scaleX, vips.KernelLanczos3)
-	case "outside":
-		if scaleX > scaleY {
-			scale = scaleX
-		} else {
-			scale = scaleY
+
+		if actualW < canvasW || actualH < canvasH {
+			left := (canvasW - actualW) / 2
+			top := (canvasH - actualH) / 2
+			if err := image.EmbedBackgroundRGBA(left, top, canvasW, canvasH, &vips.ColorRGBA{
+				R: bg[0], G: bg[1], B: bg[2], A: 255,
+			}); err != nil {
+				return fmt.Errorf("embed background: %w", err)
+			}
 		}
+	}
+
+	return nil
+}
+
+func mapCropToInteresting(crop string) vips.Interesting {
+	switch crop {
+	case "centre":
+		return vips.InterestingCentre
+	case "attention":
+		return vips.InterestingAttention
+	case "entropy":
+		return vips.InterestingEntropy
 	default:
-		if scaleX < scaleY {
-			scale = scaleX
-		} else {
-			scale = scaleY
-		}
+		return vips.InterestingNone
 	}
+}
 
-	if scale >= 1.0 {
-		return nil
+func mapSizeToSize(size string) vips.Size {
+	switch size {
+	case "down":
+		return vips.SizeDown
+	case "up":
+		return vips.SizeUp
+	case "force":
+		return vips.SizeForce
+	default:
+		return vips.SizeBoth
 	}
-
-	kernel := vips.KernelLanczos3
-	if scale < 0.5 {
-		kernel = vips.KernelLinear
-	}
-
-	return image.Resize(scale, kernel)
 }

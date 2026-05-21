@@ -37,7 +37,7 @@
         <h2 id="endpoint-title">接口地址</h2>
         <div class="endpoint">
           <code id="api-example"
-            >/api/media/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=800&amp;height=600&amp;fit=cover</code
+            >/api/media/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=800&amp;height=600&amp;crop=centre</code
           >
           <button class="copy" type="button" data-copy="#api-example">复制</button>
         </div>
@@ -86,11 +86,18 @@
               <td>按源媒体推断</td>
             </tr>
             <tr>
-              <td><code>fit</code></td>
+              <td><code>crop</code></td>
               <td>
-                <code>inside</code>、<code>cover</code>、<code>contain</code>、<code>fill</code>、<code>outside</code>
+                裁剪策略：<code>none</code>、<code>centre</code>、<code>attention</code>、<code>entropy</code>
               </td>
-              <td><code>inside</code></td>
+              <td><code>none</code></td>
+            </tr>
+            <tr>
+              <td><code>size</code></td>
+              <td>
+                缩放行为：<code>both</code>、<code>down</code>、<code>up</code>、<code>force</code>
+              </td>
+              <td><code>both</code></td>
             </tr>
             <tr>
               <td><code>quality</code></td>
@@ -150,7 +157,7 @@
 
       <section aria-labelledby="request-example-title">
         <h2 id="request-example-title">请求示例</h2>
-        <div class="json-preview">GET /api/media/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=800&amp;height=600&amp;fit=cover HTTP/1.1
+        <div class="json-preview">GET /api/media/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=800&amp;height=600&amp;crop=centre HTTP/1.1
 Host: your-domain.com
 Accept: image/webp, image/*</div>
       </section>
@@ -310,7 +317,7 @@ Content-Type: application/json; charset=utf-8
     </main>
 
     <footer>
-      <div class="shell">Powered by Node.js, sharp, and ffmpeg</div>
+      <div class="shell">Powered by Go, govips, and ffmpeg</div>
     </footer>
 
     <script>
