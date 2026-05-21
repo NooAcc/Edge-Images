@@ -20,9 +20,8 @@ type PlatformConfig struct {
 
 var presets = map[string]PlatformConfig{
 	"huggingface": {
-		MaxDimension:    2048,
-		DefaultQuality:  90,
-		BatchConcurrency: 4,
+		MaxDimension:   2048,
+		DefaultQuality: 90,
 		Cache: CacheConfig{
 			Type:        "lru+disk",
 			MaxMemoryMB: 4096,
@@ -43,9 +42,6 @@ func Load() PlatformConfig {
 	}
 	if v := envInt("DEFAULT_QUALITY"); v > 0 {
 		preset.DefaultQuality = v
-	}
-	if v := envInt("BATCH_CONCURRENCY"); v > 0 {
-		preset.BatchConcurrency = v
 	}
 	if v := envInt("CACHE_MAX_MEMORY_MB"); v > 0 {
 		preset.Cache.MaxMemoryMB = v

@@ -32,26 +32,20 @@ type batchResponseItem struct {
 }
 
 type BatchHandler struct {
-	cfg     config.PlatformConfig
-	al      *allowlist.Allowlist
-	cache   *cache.Cache
-	fetch   *fetcher.Fetcher
-	log     *slog.Logger
-	limiter chan struct{}
+	cfg   config.PlatformConfig
+	al    *allowlist.Allowlist
+	cache *cache.Cache
+	fetch *fetcher.Fetcher
+	log   *slog.Logger
 }
 
 func NewBatchHandler(cfg config.PlatformConfig, al *allowlist.Allowlist, c *cache.Cache, f *fetcher.Fetcher, log *slog.Logger) *BatchHandler {
-	concurrency := cfg.BatchConcurrency
-	if concurrency <= 0 {
-		concurrency = 4
-	}
 	return &BatchHandler{
-		cfg:     cfg,
-		al:      al,
-		cache:   c,
-		fetch:   f,
-		log:     log,
-		limiter: make(chan struct{}, concurrency),
+		cfg:   cfg,
+		al:    al,
+		cache: c,
+		fetch: f,
+		log:   log,
 	}
 }
 
@@ -238,9 +232,6 @@ func (h *BatchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		processWg.Add(1)
 		go func(uuid string, p *params.Params, source *sourceEntry) {
 			defer processWg.Done()
-
-			h.limiter <- struct{}{}
-			defer func() { <-h.limiter }()
 
 			procParams := processor.ImageParams{
 				Width:             p.Width,

@@ -24,7 +24,6 @@ func main() {
 	log.Info("server: config loaded",
 		"maxDimension", cfg.MaxDimension,
 		"defaultQuality", cfg.DefaultQuality,
-		"batchConcurrency", cfg.BatchConcurrency,
 		"cacheType", cfg.Cache.Type,
 		"cacheMemoryMB", cfg.Cache.MaxMemoryMB,
 		"cacheDiskGB", cfg.Cache.MaxDiskGB,
