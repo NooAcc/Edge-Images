@@ -46,11 +46,14 @@ type ImageMetadata struct {
 }
 
 func InitVips() {
-	vips.Startup(&vips.Config{
+	err := vips.Startup(&vips.Config{
 		MaxCacheFiles: 0,
 		MaxCacheSize:  0,
 		MaxCacheMem:   0,
 	})
+	if err != nil {
+		panic(fmt.Sprintf("failed to start vips: %v", err))
+	}
 }
 
 func ShutdownVips() {
