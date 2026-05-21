@@ -206,41 +206,64 @@ func (h *Handler) handleMetadata(w http.ResponseWriter, p *params.Params, isVide
 			"sourceSize": meta.SourceSize,
 		}
 	} else {
-		result, err := h.fetch.FetchImageRange(p.URL, fetcher.DefaultMetaRange)
-		if err != nil {
-			log.Warn("handler: image metadata fetch failed", "error", err)
-			sendJSON(w, http.StatusBadGateway, map[string]string{
-				"error":   "Bad Gateway",
-				"details": sanitizeHeader(err.Error()),
-			})
-			return
+		// Check source cache first — a prior image processing request may have cached the full source bytes
+		var sourceBuffer []byte
+		var sourceContentType string
+		if h.cache != nil {
+			sourceKey := cache.BuildCacheKey("source", p.URL)
+			if entry, found := h.cache.Get(sourceKey); found {
+				sourceBuffer = entry.Buffer
+				sourceContentType = entry.ContentType
+			}
 		}
 
-		meta, err := processor.ProbeImageMetadata(result.Buffer, log)
-		if err != nil {
-			log.Warn("handler: image probe failed, trying full download", "error", err)
-			fullResult, fullErr := h.fetch.FetchImage(p.URL)
-			if fullErr != nil {
-				sendJSON(w, http.StatusBadGateway, map[string]string{
-					"error":   "Bad Gateway",
-					"details": sanitizeHeader(fullErr.Error()),
-				})
-				return
-			}
-			meta, err = processor.ProbeImageMetadata(fullResult.Buffer, log)
+		if sourceBuffer == nil {
+			result, err := h.fetch.FetchImageRange(p.URL, fetcher.DefaultMetaRange)
 			if err != nil {
+				log.Warn("handler: image metadata fetch failed", "error", err)
 				sendJSON(w, http.StatusBadGateway, map[string]string{
 					"error":   "Bad Gateway",
 					"details": sanitizeHeader(err.Error()),
 				})
 				return
 			}
-			meta.SourceSize = int64(len(fullResult.Buffer))
-			meta.SourceContentType = fullResult.ContentType
-		} else {
-			meta.SourceSize = result.SourceSize
-			meta.SourceContentType = result.ContentType
+			sourceBuffer = result.Buffer
+			sourceContentType = result.ContentType
 		}
+
+		meta, err := processor.ProbeImageMetadata(sourceBuffer, log)
+		if err != nil {
+			if len(sourceBuffer) >= int(fetcher.DefaultMetaRange) {
+				// Partial download probe failed — try full download
+				log.Warn("handler: image probe failed, trying full download", "error", err)
+				fullResult, fullErr := h.fetch.FetchImage(p.URL)
+				if fullErr != nil {
+					sendJSON(w, http.StatusBadGateway, map[string]string{
+						"error":   "Bad Gateway",
+						"details": sanitizeHeader(fullErr.Error()),
+					})
+					return
+				}
+				sourceBuffer = fullResult.Buffer
+				sourceContentType = fullResult.ContentType
+				meta, err = processor.ProbeImageMetadata(sourceBuffer, log)
+				if err != nil {
+					sendJSON(w, http.StatusBadGateway, map[string]string{
+						"error":   "Bad Gateway",
+						"details": sanitizeHeader(err.Error()),
+					})
+					return
+				}
+			} else {
+				sendJSON(w, http.StatusBadGateway, map[string]string{
+					"error":   "Bad Gateway",
+					"details": sanitizeHeader(err.Error()),
+				})
+				return
+			}
+		}
+		meta.SourceSize = int64(len(sourceBuffer))
+		meta.SourceContentType = sourceContentType
 
 		data = map[string]interface{}{
 			"width":             meta.Width,
