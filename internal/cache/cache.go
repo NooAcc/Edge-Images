@@ -165,6 +165,7 @@ func (c *Cache) Close() {
 		c.mem.Close()
 	}
 	if c.db != nil {
+		c.db.Flush()
 		c.db.Close()
 	}
 }
