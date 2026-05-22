@@ -1,6 +1,14 @@
 node_modules
 .git
+.github
 test
+tests
+*_test.go
 *.md
 .eslintrc*
 .prettierrc*
+.gitignore
+.dockerignore
+docker-compose*.yml
+LICENSE
+docs/

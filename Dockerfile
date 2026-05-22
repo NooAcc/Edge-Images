@@ -16,11 +16,13 @@ RUN CGO_ENABLED=1 GOOS=linux go build -o /app/edge-image ./cmd/server
 
 FROM debian:bookworm-slim
 
+ARG USE_SYSTEM_FFMPEG=false
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libvips42 \
-    ffmpeg \
     ca-certificates \
     curl \
+    $(if [ "$USE_SYSTEM_FFMPEG" = "true" ]; then echo "ffmpeg"; fi) \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
