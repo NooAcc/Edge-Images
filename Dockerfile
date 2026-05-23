@@ -16,7 +16,7 @@ RUN CGO_ENABLED=1 GOOS=linux go build -o /app/edge-image ./cmd/server
 
 FROM debian:bookworm-slim
 
-ARG USE_SYSTEM_FFMPEG=false
+ARG USE_SYSTEM_FFMPEG=true
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libvips42 \
