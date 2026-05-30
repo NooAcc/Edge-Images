@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -19,6 +20,24 @@ import (
 	"github.com/dgraph-io/ristretto/v2"
 )
 
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const (
+	pendingBufSize   = 1024              // write-back channel capacity
+	flushInterval    = 5 * time.Second   // drain-and-flush period
+	cleanupInterval  = 10 * time.Minute  // disk-usage check period
+	rebuildWindow    = 2 * time.Minute   // circuit-breaker sliding window
+	maxRebuildsInWin = 5                 // max rebuilds before disabling disk
+	entryVersion     = byte(1)           // binary encoding version tag
+)
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+// Entry holds a cached response body and its MIME type.
 type Entry struct {
 	Buffer      []byte
 	ContentType string
@@ -29,31 +48,51 @@ type writeReq struct {
 	entry *Entry
 }
 
+// Cache is a two-tier (memory + disk) write-back cache.
+// Memory tier: Ristretto (TinyLFU).  Disk tier: PebbleDB (LSM).
 type Cache struct {
-	mem       *ristretto.Cache[string, *Entry]
-	db        *pebble.DB
-	cacheDir  string
-	maxBytes  int64
-	log       *slog.Logger
-	mu        sync.RWMutex
-	rebuildMu sync.Mutex
+	mem      *ristretto.Cache[string, *Entry]
+	db       *pebble.DB
+	cacheDir string
+	maxBytes int64
+	log      *slog.Logger
+	mu       sync.RWMutex // guards db pointer
 
 	// write-back buffer
-	pending  chan writeReq
-	done     chan struct{}
-	flushWg  sync.WaitGroup // waits for flushLoop to exit
+	pending chan writeReq
+	done    chan struct{}
+	flushWg sync.WaitGroup
+
+	// rebuild coordination
+	rebuildMu    sync.Mutex
+	rebuildTimes []time.Time   // timestamps of recent rebuilds
+	diskDisabled atomic.Bool   // permanently disables disk tier
+
+	// corruption tracking — full path of the last corrupted file reported by
+	// Pebble (EventListener) or parsed from a Get error.  Used by targeted
+	// recovery to remove only the bad SST instead of wiping everything.
+	corruptedPath atomic.Value // string
 }
 
+// ---------------------------------------------------------------------------
+// Constructor
+// ---------------------------------------------------------------------------
+
+// New creates a Cache.  Memory tier is created when maxMemoryMB > 0.
+// Disk tier is created when maxDiskGB > 0 and cacheDir is non-empty.
+// On disk-open failure the directory is wiped and retried once; if that also
+// fails the disk tier is silently disabled and the cache runs memory-only.
 func New(maxMemoryMB, maxDiskGB int, cacheDir string, log *slog.Logger) (*Cache, error) {
 	c := &Cache{
 		log:     log,
-		pending: make(chan writeReq, 1024),
+		pending: make(chan writeReq, pendingBufSize),
 		done:    make(chan struct{}),
 	}
 
+	// ---- memory tier ----
 	if maxMemoryMB > 0 {
 		mem, err := ristretto.NewCache(&ristretto.Config[string, *Entry]{
-			NumCounters: int64(maxMemoryMB * 10),
+			NumCounters: int64(maxMemoryMB) * 10,
 			MaxCost:     int64(maxMemoryMB) * 1024 * 1024,
 			BufferItems: 64,
 		})
@@ -63,197 +102,107 @@ func New(maxMemoryMB, maxDiskGB int, cacheDir string, log *slog.Logger) (*Cache,
 		c.mem = mem
 	}
 
+	// ---- disk tier ----
 	if maxDiskGB > 0 && cacheDir != "" {
 		c.maxBytes = int64(maxDiskGB) * 1024 * 1024 * 1024
 		c.cacheDir = cacheDir
-		db, err := c.openPebble(cacheDir)
-		if err != nil {
-			c.log.Warn("cache: pebble open failed, attempting targeted recovery", "error", err)
 
-			// Strategy 1: remove only WAL/manifest files, keep SST data
-			cleanPebbleMeta(cacheDir)
-			db, err = c.openPebble(cacheDir)
-			if err != nil {
-				c.log.Warn("cache: pebble open failed after meta cleanup, removing entire dir", "error", err)
-
-				// Strategy 2: full cleanup as last resort
-				if rmErr := os.RemoveAll(cacheDir); rmErr != nil {
-					return nil, fmt.Errorf("remove corrupt pebble dir: %w", rmErr)
-				}
-				db, err = c.openPebble(cacheDir)
-				if err != nil {
-					return nil, fmt.Errorf("open pebble after cleanup: %w", err)
-				}
-				c.log.Info("cache: pebble rebuilt after full cleanup")
-			} else {
-				c.log.Info("cache: pebble recovered after meta cleanup (SST data preserved)")
+		if err := c.openDisk(); err != nil {
+			log.Warn("cache: disk open failed, wiping and retrying", "error", err)
+			os.RemoveAll(cacheDir)
+			if err := c.openDisk(); err != nil {
+				log.Error("cache: disk open failed after wipe, disabling disk tier", "error", err)
+				c.diskDisabled.Store(true)
 			}
 		}
-		c.db = db
-		c.flushWg.Add(1)
-		go c.flushLoop()
 	}
+
+	// Always start background loop — no-ops when disk is nil.
+	c.flushWg.Add(1)
+	go c.backgroundLoop()
+
+	log.Info("cache: initialized",
+		"memoryMB", maxMemoryMB,
+		"diskGB", maxDiskGB,
+		"diskEnabled", !c.diskDisabled.Load())
 
 	return c, nil
 }
 
-func (c *Cache) openPebble(dir string) (*pebble.DB, error) {
-	return pebble.Open(dir, &pebble.Options{
-		FormatMajorVersion: pebble.FormatColumnarBlocks,
-		Levels: [7]pebble.LevelOptions{
-			{FilterPolicy: bloom.FilterPolicy(10)},
-		},
-		Logger: pebble.DefaultLogger,
-		EventListener: &pebble.EventListener{
-			DataCorruption: func(info pebble.DataCorruptionInfo) {
-				c.log.Error("pebble: data corruption detected",
-					"path", info.Path,
-					"details", info.Details)
-				go c.triggerRebuild()
-			},
-		},
-	})
-}
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
 
-// cleanPebbleMeta removes only WAL, MANIFEST, and CURRENT files from a Pebble
-// directory, preserving SST data files. This allows Pebble to attempt a fresh
-// open while keeping the bulk of cached data intact.
-func cleanPebbleMeta(dir string) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return
-	}
-	for _, e := range entries {
-		name := e.Name()
-		if strings.HasSuffix(name, ".log") ||
-			name == "MANIFEST" || name == "CURRENT" || name == "OPTIONS" {
-			os.Remove(filepath.Join(dir, name))
-		}
-	}
-}
-
-// flushLoop periodically drains the pending channel and writes entries
-// to Pebble in a single batch, reducing fsync calls from N to 1.
-func (c *Cache) flushLoop() {
-	defer c.flushWg.Done()
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			c.drainAndFlush()
-		case <-c.done:
-			// Final drain before shutdown
-			c.drainAndFlush()
-			return
-		}
-	}
-}
-
-func (c *Cache) drainAndFlush() {
-	// Drain all pending entries (non-blocking)
-	var batch []writeReq
-	for {
-		select {
-		case req := <-c.pending:
-			batch = append(batch, req)
-		default:
-			goto flush
-		}
-	}
-
-flush:
-	if len(batch) == 0 {
-		return
-	}
-
-	c.mu.RLock()
-	db := c.db
-	c.mu.RUnlock()
-
-	if db == nil {
-		return
-	}
-
-	// Write all entries in a single Pebble batch = 1 fsync
-	pebBatch := db.NewBatch()
-	for _, req := range batch {
-		data := encodeEntry(req.entry)
-		pebBatch.Set([]byte(req.key), data, nil)
-	}
-
-	if err := pebBatch.Commit(pebble.Sync); err != nil {
-		c.log.Warn("cache: batch flush failed", "count", len(batch), "error", err)
-		if corruptionErr(err) {
-			c.triggerRebuild()
-		}
-		return
-	}
-
-	c.log.Debug("cache: batch flushed", "count", len(batch))
-}
-
-// corruptionErr checks whether a pebble error is a corruption error.
-func corruptionErr(err error) bool {
-	if err == nil {
-		return false
-	}
-	// pebble marks corruption errors with "pebble: corruption" prefix
-	return strings.Contains(err.Error(), "pebble: corruption") ||
-		strings.Contains(err.Error(), "checksum mismatch")
-}
-
+// Get returns the cached entry for key, or (nil, false) on miss.
+// Memory tier is checked first; a disk hit is promoted to memory.
 func (c *Cache) Get(key string) (*Entry, bool) {
+	// fast path — memory
 	if c.mem != nil {
-		if entry, found := c.mem.Get(key); found && entry != nil {
-			return entry, true
+		if e, ok := c.mem.Get(key); ok && e != nil {
+			return e, true
 		}
 	}
 
+	// slow path — disk
 	c.mu.RLock()
 	db := c.db
 	c.mu.RUnlock()
+	if db == nil {
+		return nil, false
+	}
 
-	if db != nil {
-		val, closer, err := db.Get([]byte(key))
-		if err == nil {
-			entry, ok := decodeEntry(val)
-			closer.Close()
-			if ok {
-				if c.mem != nil {
-					c.mem.Set(key, entry, int64(len(entry.Buffer)))
-				}
-				return entry, true
-			}
-		} else if err != pebble.ErrNotFound {
+	val, closer, err := db.Get([]byte(key))
+	if err != nil {
+		if err != pebble.ErrNotFound {
 			c.log.Warn("cache: pebble read error", "key", key, "error", err)
 			if corruptionErr(err) {
-				c.triggerRebuild()
+				// Parse corrupted SST path from the error message so targeted
+				// recovery knows which file to remove.
+				if p := parseCorruptedPath(err.Error(), c.cacheDir); p != "" {
+					c.corruptedPath.Store(p)
+				}
+				go c.rebuildDisk()
 			}
 		}
+		return nil, false
+	}
+	defer closer.Close()
+
+	entry, ok := decodeEntry(val)
+	if !ok {
+		return nil, false
 	}
 
-	return nil, false
+	// promote to memory
+	if c.mem != nil {
+		c.mem.Set(key, entry, int64(len(entry.Buffer)))
+	}
+	return entry, true
 }
 
+// Set stores entry under key.  Memory update is synchronous; disk write is
+// asynchronous via the write-back buffer.
 func (c *Cache) Set(key string, entry *Entry) {
-	// Always update memory cache immediately (fast path, reads see it instantly)
 	if c.mem != nil {
 		c.mem.Set(key, entry, int64(len(entry.Buffer)))
 	}
 
-	// Enqueue for batch write to disk (non-blocking)
-	if c.db != nil {
-		select {
-		case c.pending <- writeReq{key: key, entry: entry}:
-		default:
-			// Channel full — drop disk write, memory cache still has it
-			c.log.Warn("cache: write-back buffer full, dropping disk write")
-		}
+	c.mu.RLock()
+	db := c.db
+	c.mu.RUnlock()
+	if db == nil {
+		return
+	}
+
+	select {
+	case c.pending <- writeReq{key: key, entry: entry}:
+	default:
+		c.log.Warn("cache: write-back buffer full, dropping disk write")
 	}
 }
 
+// Cleanup evicts the oldest entries when disk usage exceeds the configured
+// limit, reclaiming down to 90 %.
 func (c *Cache) Cleanup() {
 	c.mu.RLock()
 	db := c.db
@@ -269,52 +218,49 @@ func (c *Cache) Cleanup() {
 		return
 	}
 
-	type entryInfo struct {
-		key       []byte
-		size      int64
-		timestamp int64
+	type ei struct {
+		key  []byte
+		size int64
+		ts   int64
 	}
 
-	var entries []entryInfo
+	var entries []ei
 	iter, err := db.NewIter(&pebble.IterOptions{
 		LowerBound: []byte{0},
 		UpperBound: []byte{0xff},
 	})
 	if err != nil {
-		c.log.Warn("cache: create iterator failed", "error", err)
+		c.log.Warn("cache: cleanup iter failed", "error", err)
 		return
 	}
 	defer iter.Close()
 
 	for iter.First(); iter.Valid(); iter.Next() {
-		val := iter.Value()
-		ts, ok := decodeTimestamp(val)
+		v := iter.Value()
+		ts, ok := decodeTimestamp(v)
 		if !ok {
 			continue
 		}
-		key := make([]byte, len(iter.Key()))
-		copy(key, iter.Key())
-		entries = append(entries, entryInfo{
-			key:       key,
-			size:      int64(len(val)),
-			timestamp: ts,
-		})
+		k := make([]byte, len(iter.Key()))
+		copy(k, iter.Key())
+		entries = append(entries, ei{key: k, size: int64(len(v)), ts: ts})
 	}
 
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].timestamp < entries[j].timestamp
-	})
+	sort.Slice(entries, func(i, j int) bool { return entries[i].ts < entries[j].ts })
 
-	targetBytes := maxBytes * 9 / 10 // reclaim to 90%
+	target := maxBytes * 9 / 10
 	var freed int64
 	for _, e := range entries {
-		if usage-uint64(freed) <= uint64(targetBytes) {
+		if usage-uint64(freed) <= uint64(target) {
 			break
 		}
 		if err := db.Delete(e.key, pebble.Sync); err != nil {
 			c.log.Warn("cache: cleanup delete failed", "error", err)
 			if corruptionErr(err) {
-				c.triggerRebuild()
+				if p := parseCorruptedPath(err.Error(), c.cacheDir); p != "" {
+					c.corruptedPath.Store(p)
+				}
+				go c.rebuildDisk()
 				return
 			}
 			continue
@@ -323,28 +269,29 @@ func (c *Cache) Cleanup() {
 	}
 
 	if freed > 0 {
-		c.log.Info("cache: cleanup completed", "freedMB", freed/1024/1024)
+		c.log.Info("cache: cleanup done", "freedMB", freed/1024/1024)
 		if err := db.Compact(context.Background(), []byte{0}, []byte{0xff}, true); err != nil {
 			c.log.Warn("cache: cleanup compact failed", "error", err)
 			if corruptionErr(err) {
-				c.triggerRebuild()
+				go c.rebuildDisk()
 			}
 		}
 	}
 }
 
+// Close performs a final flush, then closes disk and memory tiers.
 func (c *Cache) Close() {
-	// Signal flush goroutine to stop and wait for it to finish
 	select {
 	case <-c.done:
 	default:
 		close(c.done)
 	}
-	c.flushWg.Wait() // ensures final drain completes before we touch db
+	c.flushWg.Wait() // final drainAndFlush completes here
 
 	if c.mem != nil {
 		c.mem.Close()
 	}
+
 	c.mu.Lock()
 	db := c.db
 	c.db = nil
@@ -352,159 +299,385 @@ func (c *Cache) Close() {
 
 	if db != nil {
 		if err := db.Flush(); err != nil {
-			c.log.Warn("cache: pebble flush failed", "error", err)
+			c.log.Warn("cache: db flush failed", "error", err)
 		}
 		if err := db.Close(); err != nil {
-			c.log.Warn("cache: pebble close failed", "error", err)
+			c.log.Warn("cache: db close failed", "error", err)
 		}
 	}
 }
 
-func (c *Cache) triggerRebuild() {
-	if c.cacheDir == "" {
+// ---------------------------------------------------------------------------
+// Disk management
+// ---------------------------------------------------------------------------
+
+// openDisk opens (or creates) the PebbleDB directory and sets c.db.
+func (c *Cache) openDisk() error {
+	db, err := pebble.Open(c.cacheDir, &pebble.Options{
+		FormatMajorVersion: pebble.FormatColumnarBlocks,
+		Levels: [7]pebble.LevelOptions{
+			{FilterPolicy: bloom.FilterPolicy(10)},
+		},
+		Logger: pebble.DefaultLogger,
+		EventListener: &pebble.EventListener{
+			DataCorruption: func(info pebble.DataCorruptionInfo) {
+				c.log.Error("pebble: corruption detected",
+					"path", info.Path, "details", info.Details)
+				// Store the exact corrupted file path for targeted recovery.
+				if info.Path != "" {
+					c.corruptedPath.Store(info.Path)
+				}
+				go c.rebuildDisk()
+			},
+		},
+	})
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	c.db = db
+	c.mu.Unlock()
+	return nil
+}
+
+// closeDisk nils and closes c.db.  Safe to call when already nil.
+func (c *Cache) closeDisk() {
+	c.mu.Lock()
+	db := c.db
+	c.db = nil
+	c.mu.Unlock()
+
+	if db == nil {
 		return
 	}
+	done := make(chan error, 1)
+	go func() { done <- db.Close() }()
+	select {
+	case err := <-done:
+		if err != nil {
+			c.log.Warn("cache: close error (non-fatal)", "error", err)
+		}
+	case <-time.After(5 * time.Second):
+		c.log.Warn("cache: close timed out, proceeding")
+	}
+}
+
+// rebuildDisk repairs the disk cache after corruption.  Recovery is attempted
+// in two tiers:
+//
+//  1. Targeted: remove only the corrupted SST file + Pebble meta files
+//     (MANIFEST, CURRENT, OPTIONS, WAL).  All other SSTs are preserved.
+//  2. Full wipe: remove the entire directory (last resort).
+//
+// If both fail, scheduleReopen retries with exponential backoff.
+func (c *Cache) rebuildDisk() {
+	if c.diskDisabled.Load() {
+		return
+	}
+
 	c.rebuildMu.Lock()
 	defer c.rebuildMu.Unlock()
 
-	// Double-check: another goroutine may have already rebuilt
+	// ---- circuit breaker ----
+	now := time.Now()
+	c.rebuildTimes = append(c.rebuildTimes, now)
+	cutoff := now.Add(-rebuildWindow)
+	keep := c.rebuildTimes[:0]
+	for _, t := range c.rebuildTimes {
+		if t.After(cutoff) {
+			keep = append(keep, t)
+		}
+	}
+	c.rebuildTimes = keep
+	if len(keep) >= maxRebuildsInWin {
+		c.log.Error("cache: rebuild circuit breaker tripped, disabling disk",
+			"count", len(keep), "window", rebuildWindow)
+		c.closeDisk()
+		c.diskDisabled.Store(true)
+		return
+	}
+
+	// double-check: already nil?
 	c.mu.RLock()
 	db := c.db
 	c.mu.RUnlock()
 	if db == nil {
-		return // already rebuilding or rebuilt
+		return
 	}
 
-	c.log.Warn("cache: triggering rebuild due to corruption", "dir", c.cacheDir)
-
-	// Drain pending writes — they target the corrupted DB, discard them
-	drained := 0
-	for {
-		select {
-		case <-c.pending:
-			drained++
-		default:
-			goto rebuild
-		}
+	// ---- tier 1: targeted recovery (preserve valid SSTs) ----
+	if c.tryTargetedRecovery() {
+		return
 	}
 
-rebuild:
-	if drained > 0 {
-		c.log.Warn("cache: discarded pending writes during rebuild", "count", drained)
+	// ---- tier 2: full wipe ----
+	c.log.Warn("cache: targeted recovery failed, doing full wipe")
+	c.closeDisk()
+	if err := os.RemoveAll(c.cacheDir); err != nil {
+		c.log.Error("cache: remove dir failed", "error", err)
+		c.scheduleReopen()
+		return
 	}
-
-	c.mu.Lock()
-	oldDB := c.db
-	c.db = nil
-	c.mu.Unlock()
-
-	if oldDB != nil {
-		// Corruption-tolerant close: log but don't block on failure.
-		// A corrupted DB's Close() can hang or fail; we don't need it
-		// to succeed since we're about to RemoveAll the directory.
-		done := make(chan error, 1)
-		go func() { done <- oldDB.Close() }()
-		select {
-		case err := <-done:
-			if err != nil {
-				c.log.Warn("cache: old db close error (non-fatal)", "error", err)
-			}
-		case <-time.After(5 * time.Second):
-			c.log.Warn("cache: old db close timed out, proceeding with rebuild")
-		}
+	if err := c.openDisk(); err != nil {
+		c.log.Error("cache: reopen after full wipe failed", "error", err)
+		c.scheduleReopen()
+		return
 	}
-
-	// Strategy 1: remove only WAL/manifest, keep SST data
-	cleanPebbleMeta(c.cacheDir)
-	db2, err := c.openPebble(c.cacheDir)
-	if err != nil {
-		c.log.Warn("cache: pebble open failed after meta cleanup, removing entire dir", "error", err)
-
-		// Strategy 2: full cleanup as last resort
-		if err := os.RemoveAll(c.cacheDir); err != nil {
-			c.log.Error("cache: failed to remove corrupt dir", "error", err)
-			return
-		}
-		db2, err = c.openPebble(c.cacheDir)
-		if err != nil {
-			c.log.Error("cache: failed to reopen pebble after rebuild", "error", err)
-			return
-		}
-		c.log.Info("cache: pebble rebuilt after full cleanup")
-	} else {
-		c.log.Info("cache: pebble recovered after meta cleanup (SST data preserved)")
-	}
-	c.mu.Lock()
-	c.db = db2
-	c.mu.Unlock()
-	c.log.Info("cache: pebble rebuilt successfully")
+	c.log.Info("cache: recovered (full wipe)")
 }
 
-// encodeEntry serializes an Entry to binary format:
-// [4 bytes: uint32 buffer length][N bytes: buffer][8 bytes: int64 unix timestamp][remaining: contentType]
-func encodeEntry(entry *Entry) []byte {
-	ctBytes := []byte(entry.ContentType)
-	buf := make([]byte, 4+len(entry.Buffer)+8+len(ctBytes))
-	binary.LittleEndian.PutUint32(buf[0:4], uint32(len(entry.Buffer)))
-	copy(buf[4:], entry.Buffer)
-	binary.LittleEndian.PutUint64(buf[4+len(entry.Buffer):], uint64(time.Now().Unix()))
-	copy(buf[4+len(entry.Buffer)+8:], ctBytes)
+// tryTargetedRecovery removes only the corrupted SST and Pebble meta files,
+// preserving all other SST data.  Returns true if Pebble reopens successfully.
+func (c *Cache) tryTargetedRecovery() bool {
+	// 1. Close current db
+	c.closeDisk()
+
+	// 2. Remove the specific corrupted SST file (if known)
+	if v := c.corruptedPath.Load(); v != nil {
+		corrupted := v.(string)
+		if err := os.Remove(corrupted); err != nil {
+			if !os.IsNotExist(err) {
+				c.log.Warn("cache: failed to remove corrupted file",
+					"path", corrupted, "error", err)
+			}
+		} else {
+			c.log.Info("cache: removed corrupted file", "path", corrupted)
+		}
+	}
+
+	// 3. Remove meta files (MANIFEST, CURRENT, OPTIONS, WAL) so Pebble
+	//    rebuilds its state from the remaining SSTs.
+	c.cleanMetaFiles()
+
+	// 4. Try to reopen
+	if err := c.openDisk(); err != nil {
+		c.log.Warn("cache: targeted recovery open failed", "error", err)
+		return false
+	}
+
+	c.log.Info("cache: recovered (targeted SST removal)")
+	return true
+}
+
+// cleanMetaFiles removes Pebble meta files (MANIFEST, CURRENT, OPTIONS) and
+// WAL files from cacheDir, but leaves SST data files untouched.
+func (c *Cache) cleanMetaFiles() {
+	entries, err := os.ReadDir(c.cacheDir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		name := e.Name()
+		path := filepath.Join(c.cacheDir, name)
+		if strings.HasSuffix(name, ".log") ||
+			name == "MANIFEST" || name == "CURRENT" || name == "OPTIONS" {
+			os.Remove(path) // best-effort
+		}
+	}
+}
+
+// scheduleReopen retries openDisk with exponential backoff.  Each attempt
+// wipes the directory first to guarantee a clean slate.  Runs in its own
+// goroutine.
+func (c *Cache) scheduleReopen() {
+	go func() {
+		for attempt := 1; attempt <= 10; attempt++ {
+			delay := time.Duration(attempt*5) * time.Second
+			c.log.Info("cache: reopen scheduled", "attempt", attempt, "delay", delay)
+			time.Sleep(delay)
+
+			if c.diskDisabled.Load() {
+				return
+			}
+			c.mu.RLock()
+			db := c.db
+			c.mu.RUnlock()
+			if db != nil {
+				return // recovered by another goroutine
+			}
+
+			os.RemoveAll(c.cacheDir) // clean slate, ignore error
+			if err := c.openDisk(); err != nil {
+				c.log.Warn("cache: reopen failed", "attempt", attempt, "error", err)
+				continue
+			}
+			c.log.Info("cache: disk reopened", "attempt", attempt)
+			return
+		}
+
+		c.log.Error("cache: reopen exhausted after 10 attempts, disabling disk")
+		c.diskDisabled.Store(true)
+	}()
+}
+
+// ---------------------------------------------------------------------------
+// Background loop
+// ---------------------------------------------------------------------------
+
+func (c *Cache) backgroundLoop() {
+	defer c.flushWg.Done()
+
+	ft := time.NewTicker(flushInterval)
+	ct := time.NewTicker(cleanupInterval)
+	defer ft.Stop()
+	defer ct.Stop()
+
+	for {
+		select {
+		case <-ft.C:
+			c.drainAndFlush()
+		case <-ct.C:
+			c.Cleanup()
+		case <-c.done:
+			c.drainAndFlush() // final drain
+			return
+		}
+	}
+}
+
+// drainAndFlush drains the pending write-back channel and commits all entries
+// in a single Pebble batch (one fsync).  Checks db availability BEFORE
+// draining so items stay in the channel when db is nil (e.g. during rebuild).
+func (c *Cache) drainAndFlush() {
+	c.mu.RLock()
+	db := c.db
+	c.mu.RUnlock()
+	if db == nil {
+		return // don't drain — keep items in channel for later
+	}
+
+	// drain all pending entries (non-blocking)
+	var batch []writeReq
+	for {
+		select {
+		case req := <-c.pending:
+			batch = append(batch, req)
+		default:
+			goto flush
+		}
+	}
+
+flush:
+	if len(batch) == 0 {
+		return
+	}
+
+	pebBatch := db.NewBatch()
+	for _, r := range batch {
+		pebBatch.Set([]byte(r.key), encodeEntry(r.entry), nil)
+	}
+	if err := pebBatch.Commit(pebble.Sync); err != nil {
+		c.log.Warn("cache: flush failed", "count", len(batch), "error", err)
+		if corruptionErr(err) {
+			go c.rebuildDisk()
+		}
+		return
+	}
+	c.log.Debug("cache: flushed", "count", len(batch))
+}
+
+// ---------------------------------------------------------------------------
+// Binary encoding
+//
+// Format: [1B version][4B buf-len LE][NB buffer][8B unix-ts LE][NB content-type]
+// ---------------------------------------------------------------------------
+
+func encodeEntry(e *Entry) []byte {
+	ct := []byte(e.ContentType)
+	buf := make([]byte, 1+4+len(e.Buffer)+8+len(ct))
+	buf[0] = entryVersion
+	binary.LittleEndian.PutUint32(buf[1:5], uint32(len(e.Buffer)))
+	copy(buf[5:], e.Buffer)
+	binary.LittleEndian.PutUint64(buf[5+len(e.Buffer):], uint64(time.Now().Unix()))
+	copy(buf[5+len(e.Buffer)+8:], ct)
 	return buf
 }
 
-// decodeEntry deserializes an Entry from binary format.
 func decodeEntry(data []byte) (*Entry, bool) {
-	if len(data) < 12 { // 4 + 8 minimum
+	if len(data) < 13 || data[0] != entryVersion { // 1+4+8 min
 		return nil, false
 	}
-	bufLen := binary.LittleEndian.Uint32(data[0:4])
-	if len(data) < int(4+bufLen+8) {
+	n := binary.LittleEndian.Uint32(data[1:5])
+	if len(data) < int(5+n+8) {
 		return nil, false
 	}
-	buffer := make([]byte, bufLen)
-	copy(buffer, data[4:4+bufLen])
-	ctStart := 4 + bufLen + 8
-	contentType := string(data[ctStart:])
-	return &Entry{Buffer: buffer, ContentType: contentType}, true
+	buf := make([]byte, n)
+	copy(buf, data[5:5+n])
+	ct := string(data[5+n+8:])
+	return &Entry{Buffer: buf, ContentType: ct}, true
 }
 
-// decodeTimestamp extracts the unix timestamp from an encoded entry.
 func decodeTimestamp(data []byte) (int64, bool) {
-	if len(data) < 12 {
+	if len(data) < 13 || data[0] != entryVersion {
 		return 0, false
 	}
-	bufLen := binary.LittleEndian.Uint32(data[0:4])
-	if len(data) < int(4+bufLen+8) {
+	n := binary.LittleEndian.Uint32(data[1:5])
+	if len(data) < int(5+n+8) {
 		return 0, false
 	}
-	ts := int64(binary.LittleEndian.Uint64(data[4+bufLen : 4+bufLen+8]))
-	return ts, true
+	return int64(binary.LittleEndian.Uint64(data[5+n : 5+n+8])), true
 }
 
-func BuildCacheKey(keyType, url string, params ...string) string {
-	urlHash := sha256Hex(url)
+// ---------------------------------------------------------------------------
+// Cache keys
+// ---------------------------------------------------------------------------
 
+// BuildCacheKey returns a deterministic cache key.
+//
+//	"source:<sha256(url)>"
+//	"meta:<sha256(url)>"
+//	"processed:<sha256(url)>_<sha256(params)[:16]>"
+func BuildCacheKey(keyType, url string, params ...string) string {
+	h := sha256Hex(url)
 	switch keyType {
 	case "source":
-		return "source:" + urlHash
+		return "source:" + h
 	case "meta":
-		return "meta:" + urlHash
+		return "meta:" + h
 	case "processed":
-		paramStr := ""
-		for i, p := range params {
-			if i > 0 {
-				paramStr += "|"
-			}
-			paramStr += p
-		}
-		paramHash := sha256Hex(paramStr)[:16]
-		return "processed:" + urlHash + "_" + paramHash
+		ps := strings.Join(params, "|")
+		return "processed:" + h + "_" + sha256Hex(ps)[:16]
 	default:
-		return keyType + ":" + urlHash
+		return keyType + ":" + h
 	}
 }
 
-func sha256Hex(data string) string {
-	h := sha256.Sum256([]byte(data))
+func sha256Hex(s string) string {
+	h := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(h[:])
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+func corruptionErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := err.Error()
+	return strings.Contains(s, "pebble: corruption") ||
+		strings.Contains(s, "checksum mismatch") ||
+		strings.Contains(s, "file is not a table")
+}
+
+// parseCorruptedPath extracts the corrupted SST file path from a Pebble error
+// message.  Typical format:
+//
+//	"pebble: file 000015: block 0/22989: crc32c checksum mismatch ..."
+//
+// Returns the full path (<cacheDir>/000015.sst) or "" if unparseable.
+func parseCorruptedPath(errMsg string, cacheDir string) string {
+	const prefix = "pebble: file "
+	idx := strings.Index(errMsg, prefix)
+	if idx < 0 {
+		return ""
+	}
+	rest := errMsg[idx+len(prefix):]
+	colonIdx := strings.Index(rest, ":")
+	if colonIdx <= 0 {
+		return ""
+	}
+	fileNum := rest[:colonIdx]
+	return filepath.Join(cacheDir, fileNum+".sst")
 }
