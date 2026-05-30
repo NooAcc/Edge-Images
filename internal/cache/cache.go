@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -22,19 +23,31 @@ type Entry struct {
 	ContentType string
 }
 
+type writeReq struct {
+	key   string
+	entry *Entry
+}
+
 type Cache struct {
-	mem        *ristretto.Cache[string, *Entry]
-	db         *pebble.DB
-	cacheDir   string
-	maxBytes   int64
-	log        *slog.Logger
-	mu         sync.RWMutex
-	rebuildMu  sync.Mutex
+	mem       *ristretto.Cache[string, *Entry]
+	db        *pebble.DB
+	cacheDir  string
+	maxBytes  int64
+	log       *slog.Logger
+	mu        sync.RWMutex
+	rebuildMu sync.Mutex
+
+	// write-back buffer
+	pending  chan writeReq
+	done     chan struct{}
+	flushWg  sync.WaitGroup // waits for flushLoop to exit
 }
 
 func New(maxMemoryMB, maxDiskGB int, cacheDir string, log *slog.Logger) (*Cache, error) {
 	c := &Cache{
-		log: log,
+		log:     log,
+		pending: make(chan writeReq, 1024),
+		done:    make(chan struct{}),
 	}
 
 	if maxMemoryMB > 0 {
@@ -65,6 +78,8 @@ func New(maxMemoryMB, maxDiskGB int, cacheDir string, log *slog.Logger) (*Cache,
 			c.log.Info("cache: pebble rebuilt after corruption")
 		}
 		c.db = db
+		c.flushWg.Add(1)
+		go c.flushLoop()
 	}
 
 	return c, nil
@@ -77,7 +92,87 @@ func (c *Cache) openPebble(dir string) (*pebble.DB, error) {
 			{FilterPolicy: bloom.FilterPolicy(10)},
 		},
 		Logger: pebble.DefaultLogger,
+		EventListener: &pebble.EventListener{
+			DataCorruption: func(info pebble.DataCorruptionInfo) {
+				c.log.Error("pebble: data corruption detected",
+					"path", info.Path,
+					"error", info.Err)
+				go c.triggerRebuild()
+			},
+		},
 	})
+}
+
+// flushLoop periodically drains the pending channel and writes entries
+// to Pebble in a single batch, reducing fsync calls from N to 1.
+func (c *Cache) flushLoop() {
+	defer c.flushWg.Done()
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			c.drainAndFlush()
+		case <-c.done:
+			// Final drain before shutdown
+			c.drainAndFlush()
+			return
+		}
+	}
+}
+
+func (c *Cache) drainAndFlush() {
+	// Drain all pending entries (non-blocking)
+	var batch []writeReq
+	for {
+		select {
+		case req := <-c.pending:
+			batch = append(batch, req)
+		default:
+			goto flush
+		}
+	}
+
+flush:
+	if len(batch) == 0 {
+		return
+	}
+
+	c.mu.RLock()
+	db := c.db
+	c.mu.RUnlock()
+
+	if db == nil {
+		return
+	}
+
+	// Write all entries in a single Pebble batch = 1 fsync
+	pebBatch := db.NewBatch()
+	for _, req := range batch {
+		data := encodeEntry(req.entry)
+		pebBatch.Set([]byte(req.key), data, nil)
+	}
+
+	if err := pebBatch.Commit(pebble.Sync); err != nil {
+		c.log.Warn("cache: batch flush failed", "count", len(batch), "error", err)
+		if corruptionErr(err) {
+			c.triggerRebuild()
+		}
+		return
+	}
+
+	c.log.Debug("cache: batch flushed", "count", len(batch))
+}
+
+// corruptionErr checks whether a pebble error is a corruption error.
+func corruptionErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	// pebble marks corruption errors with "pebble: corruption" prefix
+	return strings.Contains(err.Error(), "pebble: corruption") ||
+		strings.Contains(err.Error(), "checksum mismatch")
 }
 
 func (c *Cache) Get(key string) (*Entry, bool) {
@@ -104,7 +199,9 @@ func (c *Cache) Get(key string) (*Entry, bool) {
 			}
 		} else if err != pebble.ErrNotFound {
 			c.log.Warn("cache: pebble read error", "key", key, "error", err)
-			c.triggerRebuild()
+			if corruptionErr(err) {
+				c.triggerRebuild()
+			}
 		}
 	}
 
@@ -112,20 +209,19 @@ func (c *Cache) Get(key string) (*Entry, bool) {
 }
 
 func (c *Cache) Set(key string, entry *Entry) {
-	c.mu.RLock()
-	db := c.db
-	c.mu.RUnlock()
-
-	if db != nil {
-		data := encodeEntry(entry)
-		if err := db.Set([]byte(key), data, pebble.Sync); err != nil {
-			c.log.Warn("cache: pebble write failed", "error", err)
-			return
-		}
-	}
-
+	// Always update memory cache immediately (fast path, reads see it instantly)
 	if c.mem != nil {
 		c.mem.Set(key, entry, int64(len(entry.Buffer)))
+	}
+
+	// Enqueue for batch write to disk (non-blocking)
+	if c.db != nil {
+		select {
+		case c.pending <- writeReq{key: key, entry: entry}:
+		default:
+			// Channel full — drop disk write, memory cache still has it
+			c.log.Warn("cache: write-back buffer full, dropping disk write")
+		}
 	}
 }
 
@@ -186,8 +282,12 @@ func (c *Cache) Cleanup() {
 		if usage-uint64(freed) <= uint64(targetBytes) {
 			break
 		}
-		if err := db.Delete(e.key, pebble.NoSync); err != nil {
+		if err := db.Delete(e.key, pebble.Sync); err != nil {
 			c.log.Warn("cache: cleanup delete failed", "error", err)
+			if corruptionErr(err) {
+				c.triggerRebuild()
+				return
+			}
 			continue
 		}
 		freed += e.size
@@ -195,11 +295,24 @@ func (c *Cache) Cleanup() {
 
 	if freed > 0 {
 		c.log.Info("cache: cleanup completed", "freedMB", freed/1024/1024)
-		db.Compact(context.Background(), []byte{0}, []byte{0xff}, true)
+		if err := db.Compact(context.Background(), []byte{0}, []byte{0xff}, true); err != nil {
+			c.log.Warn("cache: cleanup compact failed", "error", err)
+			if corruptionErr(err) {
+				c.triggerRebuild()
+			}
+		}
 	}
 }
 
 func (c *Cache) Close() {
+	// Signal flush goroutine to stop and wait for it to finish
+	select {
+	case <-c.done:
+	default:
+		close(c.done)
+	}
+	c.flushWg.Wait() // ensures final drain completes before we touch db
+
 	if c.mem != nil {
 		c.mem.Close()
 	}
@@ -235,14 +348,43 @@ func (c *Cache) triggerRebuild() {
 
 	c.log.Warn("cache: triggering rebuild due to corruption", "dir", c.cacheDir)
 
+	// Drain pending writes — they target the corrupted DB, discard them
+	drained := 0
+	for {
+		select {
+		case <-c.pending:
+			drained++
+		default:
+			goto rebuild
+		}
+	}
+
+rebuild:
+	if drained > 0 {
+		c.log.Warn("cache: discarded pending writes during rebuild", "count", drained)
+	}
+
 	c.mu.Lock()
 	oldDB := c.db
 	c.db = nil
 	c.mu.Unlock()
 
 	if oldDB != nil {
-		oldDB.Close()
+		// Corruption-tolerant close: log but don't block on failure.
+		// A corrupted DB's Close() can hang or fail; we don't need it
+		// to succeed since we're about to RemoveAll the directory.
+		done := make(chan error, 1)
+		go func() { done <- oldDB.Close() }()
+		select {
+		case err := <-done:
+			if err != nil {
+				c.log.Warn("cache: old db close error (non-fatal)", "error", err)
+			}
+		case <-time.After(5 * time.Second):
+			c.log.Warn("cache: old db close timed out, proceeding with rebuild")
+		}
 	}
+
 	if err := os.RemoveAll(c.cacheDir); err != nil {
 		c.log.Error("cache: failed to remove corrupt dir", "error", err)
 		return
