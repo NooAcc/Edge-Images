@@ -34,7 +34,7 @@ func main() {
 
 	var c *cache.Cache
 	if cfg.Cache.Type != "none" {
-		cacheDir := "/data"
+		cacheDir := "/data/pebble-cache"
 		if cfg.Cache.MaxDiskGB <= 0 {
 			cacheDir = ""
 		}

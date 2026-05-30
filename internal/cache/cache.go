@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -67,15 +68,26 @@ func New(maxMemoryMB, maxDiskGB int, cacheDir string, log *slog.Logger) (*Cache,
 		c.cacheDir = cacheDir
 		db, err := c.openPebble(cacheDir)
 		if err != nil {
-			c.log.Warn("cache: pebble open failed, clearing and retrying", "error", err)
-			if rmErr := os.RemoveAll(cacheDir); rmErr != nil {
-				return nil, fmt.Errorf("remove corrupt pebble dir: %w", rmErr)
-			}
+			c.log.Warn("cache: pebble open failed, attempting targeted recovery", "error", err)
+
+			// Strategy 1: remove only WAL/manifest files, keep SST data
+			cleanPebbleMeta(cacheDir)
 			db, err = c.openPebble(cacheDir)
 			if err != nil {
-				return nil, fmt.Errorf("open pebble after cleanup: %w", err)
+				c.log.Warn("cache: pebble open failed after meta cleanup, removing entire dir", "error", err)
+
+				// Strategy 2: full cleanup as last resort
+				if rmErr := os.RemoveAll(cacheDir); rmErr != nil {
+					return nil, fmt.Errorf("remove corrupt pebble dir: %w", rmErr)
+				}
+				db, err = c.openPebble(cacheDir)
+				if err != nil {
+					return nil, fmt.Errorf("open pebble after cleanup: %w", err)
+				}
+				c.log.Info("cache: pebble rebuilt after full cleanup")
+			} else {
+				c.log.Info("cache: pebble recovered after meta cleanup (SST data preserved)")
 			}
-			c.log.Info("cache: pebble rebuilt after corruption")
 		}
 		c.db = db
 		c.flushWg.Add(1)
@@ -101,6 +113,23 @@ func (c *Cache) openPebble(dir string) (*pebble.DB, error) {
 			},
 		},
 	})
+}
+
+// cleanPebbleMeta removes only WAL, MANIFEST, and CURRENT files from a Pebble
+// directory, preserving SST data files. This allows Pebble to attempt a fresh
+// open while keeping the bulk of cached data intact.
+func cleanPebbleMeta(dir string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if strings.HasSuffix(name, ".log") ||
+			name == "MANIFEST" || name == "CURRENT" || name == "OPTIONS" {
+			os.Remove(filepath.Join(dir, name))
+		}
+	}
 }
 
 // flushLoop periodically drains the pending channel and writes entries
@@ -385,14 +414,25 @@ rebuild:
 		}
 	}
 
-	if err := os.RemoveAll(c.cacheDir); err != nil {
-		c.log.Error("cache: failed to remove corrupt dir", "error", err)
-		return
-	}
+	// Strategy 1: remove only WAL/manifest, keep SST data
+	cleanPebbleMeta(c.cacheDir)
 	db2, err := c.openPebble(c.cacheDir)
 	if err != nil {
-		c.log.Error("cache: failed to reopen pebble after rebuild", "error", err)
-		return
+		c.log.Warn("cache: pebble open failed after meta cleanup, removing entire dir", "error", err)
+
+		// Strategy 2: full cleanup as last resort
+		if err := os.RemoveAll(c.cacheDir); err != nil {
+			c.log.Error("cache: failed to remove corrupt dir", "error", err)
+			return
+		}
+		db2, err = c.openPebble(c.cacheDir)
+		if err != nil {
+			c.log.Error("cache: failed to reopen pebble after rebuild", "error", err)
+			return
+		}
+		c.log.Info("cache: pebble rebuilt after full cleanup")
+	} else {
+		c.log.Info("cache: pebble recovered after meta cleanup (SST data preserved)")
 	}
 	c.mu.Lock()
 	c.db = db2
