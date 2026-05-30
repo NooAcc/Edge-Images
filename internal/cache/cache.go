@@ -29,7 +29,7 @@ type Cache struct {
 	maxBytes   int64
 	log        *slog.Logger
 	mu         sync.RWMutex
-	rebuildOnce sync.Once
+	rebuildMu  sync.Mutex
 }
 
 func New(maxMemoryMB, maxDiskGB int, cacheDir string, log *slog.Logger) (*Cache, error) {
@@ -72,7 +72,6 @@ func New(maxMemoryMB, maxDiskGB int, cacheDir string, log *slog.Logger) (*Cache,
 
 func (c *Cache) openPebble(dir string) (*pebble.DB, error) {
 	return pebble.Open(dir, &pebble.Options{
-		DisableWAL:         true,
 		FormatMajorVersion: pebble.FormatColumnarBlocks,
 		Levels: [7]pebble.LevelOptions{
 			{FilterPolicy: bloom.FilterPolicy(10)},
@@ -119,7 +118,7 @@ func (c *Cache) Set(key string, entry *Entry) {
 
 	if db != nil {
 		data := encodeEntry(entry)
-		if err := db.Set([]byte(key), data, pebble.NoSync); err != nil {
+		if err := db.Set([]byte(key), data, pebble.Sync); err != nil {
 			c.log.Warn("cache: pebble write failed", "error", err)
 			return
 		}
@@ -223,31 +222,40 @@ func (c *Cache) triggerRebuild() {
 	if c.cacheDir == "" {
 		return
 	}
-	c.rebuildOnce.Do(func() {
-		c.log.Warn("cache: triggering rebuild due to corruption", "dir", c.cacheDir)
+	c.rebuildMu.Lock()
+	defer c.rebuildMu.Unlock()
 
-		c.mu.Lock()
-		oldDB := c.db
-		c.db = nil
-		c.mu.Unlock()
+	// Double-check: another goroutine may have already rebuilt
+	c.mu.RLock()
+	db := c.db
+	c.mu.RUnlock()
+	if db == nil {
+		return // already rebuilding or rebuilt
+	}
 
-		if oldDB != nil {
-			oldDB.Close()
-		}
-		if err := os.RemoveAll(c.cacheDir); err != nil {
-			c.log.Error("cache: failed to remove corrupt dir", "error", err)
-			return
-		}
-		db, err := c.openPebble(c.cacheDir)
-		if err != nil {
-			c.log.Error("cache: failed to reopen pebble after rebuild", "error", err)
-			return
-		}
-		c.mu.Lock()
-		c.db = db
-		c.mu.Unlock()
-		c.log.Info("cache: pebble rebuilt successfully")
-	})
+	c.log.Warn("cache: triggering rebuild due to corruption", "dir", c.cacheDir)
+
+	c.mu.Lock()
+	oldDB := c.db
+	c.db = nil
+	c.mu.Unlock()
+
+	if oldDB != nil {
+		oldDB.Close()
+	}
+	if err := os.RemoveAll(c.cacheDir); err != nil {
+		c.log.Error("cache: failed to remove corrupt dir", "error", err)
+		return
+	}
+	db2, err := c.openPebble(c.cacheDir)
+	if err != nil {
+		c.log.Error("cache: failed to reopen pebble after rebuild", "error", err)
+		return
+	}
+	c.mu.Lock()
+	c.db = db2
+	c.mu.Unlock()
+	c.log.Info("cache: pebble rebuilt successfully")
 }
 
 // encodeEntry serializes an Entry to binary format:
