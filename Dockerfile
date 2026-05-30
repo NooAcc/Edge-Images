@@ -35,6 +35,7 @@ RUN mkdir -p /data
 ENV PORT=3000
 ENV PLATFORM=huggingface
 ENV PUBLIC_DIR=/app/public
+ENV GOMEMLIMIT=10GiB
 
 EXPOSE 3000
 

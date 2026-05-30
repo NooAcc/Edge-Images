@@ -24,7 +24,7 @@ var presets = map[string]PlatformConfig{
 		DefaultQuality: 90,
 		Cache: CacheConfig{
 			Type:        "lru+disk",
-			MaxMemoryMB: 4096,
+			MaxMemoryMB: 3072,
 			MaxDiskGB:   50,
 		},
 	},
