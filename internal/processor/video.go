@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"os/exec"
 	"time"
 
@@ -117,14 +118,14 @@ func ExtractVideoFrame(url string, fetch *fetcher.Fetcher, log *slog.Logger) ([]
 		return nil, fmt.Errorf("fetch video range: %w", err)
 	}
 
-	frame, err := extractFrame(result.Buffer, log)
+	frame, err := extractFrame(result.Buffer, VideoTimeout, log)
 	if err != nil {
 		log.Info("video.frame.range_fallback", "reason", "partial decode failed")
 		fullResult, fullErr := fetch.FetchVideoFull(url)
 		if fullErr != nil {
 			return nil, fmt.Errorf("fetch video full: %w", fullErr)
 		}
-		frame, err = extractFrame(fullResult.Buffer, log)
+		frame, err = extractFrame(fullResult.Buffer, fetcher.VideoFullTimeout, log)
 		if err != nil {
 			return nil, fmt.Errorf("extract frame: %w", err)
 		}
@@ -134,20 +135,33 @@ func ExtractVideoFrame(url string, fetch *fetcher.Fetcher, log *slog.Logger) ([]
 	return frame, nil
 }
 
-func extractFrame(buffer []byte, log *slog.Logger) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), VideoTimeout)
+func extractFrame(buffer []byte, timeout time.Duration, log *slog.Logger) ([]byte, error) {
+	// Write buffer to temp file so ffmpeg can seek (critical for MP4 moov atom at end)
+	tmpFile, err := os.CreateTemp("", "edge-video-*.tmp")
+	if err != nil {
+		return nil, fmt.Errorf("create temp file: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	defer os.Remove(tmpPath)
+
+	if _, err := tmpFile.Write(buffer); err != nil {
+		tmpFile.Close()
+		return nil, fmt.Errorf("write temp file: %w", err)
+	}
+	tmpFile.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	ffmpegPath := getFfmpegPath()
 	cmd := exec.CommandContext(ctx, ffmpegPath,
-		"-i", "pipe:0",
+		"-i", tmpPath,
 		"-vframes", "1",
 		"-f", "image2",
 		"-vcodec", "png",
 		"-y",
 		"pipe:1",
 	)
-	cmd.Stdin = bytes.NewReader(buffer)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

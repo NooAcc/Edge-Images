@@ -18,6 +18,7 @@ const (
 	DefaultRetryCount = 3
 	VideoRangeSize    = 512 * 1024
 	VideoTimeout      = 30 * time.Second
+	VideoFullTimeout  = 120 * time.Second
 )
 
 var retryDelays = []time.Duration{500 * time.Millisecond, 1 * time.Second, 2 * time.Second}
@@ -74,7 +75,7 @@ func (f *Fetcher) FetchVideoRange(url string) (*Result, error) {
 }
 
 func (f *Fetcher) FetchVideoFull(url string) (*Result, error) {
-	return f.fetchWithRetry(url, "", VideoTimeout, 0)
+	return f.fetchWithRetry(url, "", VideoFullTimeout, 0)
 }
 
 func (f *Fetcher) fetchWithRetry(url, rangeHeader string, timeout time.Duration, maxBytes int64) (*Result, error) {
@@ -150,6 +151,19 @@ func (f *Fetcher) fetchOnce(url, rangeHeader string, timeout time.Duration, maxB
 
 	if maxBytes > 0 && int64(len(body)) > maxBytes {
 		return nil, &FetchError{Message: fmt.Sprintf("source exceeds %d bytes", maxBytes)}
+	}
+
+	// For full downloads (no range header), verify completeness
+	if rangeHeader == "" {
+		if cl := resp.Header.Get("Content-Length"); cl != "" {
+			expected, err := strconv.ParseInt(cl, 10, 64)
+			if err == nil && expected > 0 && int64(len(body)) != expected {
+				return nil, &FetchError{
+					Message:   fmt.Sprintf("incomplete download: got %d bytes, expected %d", len(body), expected),
+					Retryable: true,
+				}
+			}
+		}
 	}
 
 	return &Result{
