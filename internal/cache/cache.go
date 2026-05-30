@@ -96,7 +96,7 @@ func (c *Cache) openPebble(dir string) (*pebble.DB, error) {
 			DataCorruption: func(info pebble.DataCorruptionInfo) {
 				c.log.Error("pebble: data corruption detected",
 					"path", info.Path,
-					"error", info.Err)
+					"details", info.Details)
 				go c.triggerRebuild()
 			},
 		},
