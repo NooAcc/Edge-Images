@@ -34,12 +34,12 @@ func main() {
 
 	var c *cache.Cache
 	if cfg.Cache.Type != "none" {
-		cacheDir := "/data/pebble-cache"
+		dbPath := "/data/cache.db"
 		if cfg.Cache.MaxDiskGB <= 0 {
-			cacheDir = ""
+			dbPath = ""
 		}
 		var err error
-		c, err = cache.New(cfg.Cache.MaxMemoryMB, cfg.Cache.MaxDiskGB, cacheDir, log)
+		c, err = cache.New(cfg.Cache.MaxMemoryMB, cfg.Cache.MaxDiskGB, dbPath, log)
 		if err != nil {
 			log.Error("server: cache init failed, continuing without cache", "error", err)
 		} else {
