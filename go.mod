@@ -5,7 +5,7 @@ go 1.25.0
 require (
 	github.com/davidbyttow/govips/v2 v2.18.0
 	github.com/dgraph-io/ristretto/v2 v2.1.0
-	go.etcd.io/bbolt v1.4.0
+	github.com/mattn/go-sqlite3 v1.14.24
 )
 
 require (

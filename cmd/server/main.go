@@ -34,12 +34,12 @@ func main() {
 
 	var c *cache.Cache
 	if cfg.Cache.Type != "none" {
-		dbPath := "/data/cache.db"
+		basePath := "/data"
 		if cfg.Cache.MaxDiskGB <= 0 {
-			dbPath = ""
+			basePath = ""
 		}
 		var err error
-		c, err = cache.New(cfg.Cache.MaxMemoryMB, cfg.Cache.MaxDiskGB, dbPath, log)
+		c, err = cache.New(cfg.Cache.MaxMemoryMB, cfg.Cache.MaxDiskGB, basePath, log)
 		if err != nil {
 			log.Error("server: cache init failed, continuing without cache", "error", err)
 		} else {
