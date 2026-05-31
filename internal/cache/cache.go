@@ -22,7 +22,6 @@ import (
 // ---------------------------------------------------------------------------
 
 const (
-	flushInterval   = 5 * time.Second  // drain-and-flush period
 	cleanupInterval = 10 * time.Minute // disk-usage check period
 	cacheBucket     = "cache"          // bbolt bucket name
 )
@@ -45,12 +44,7 @@ type diskEntry struct {
 	Size        int64  `json:"s"`
 }
 
-type writeReq struct {
-	key   string
-	entry *Entry
-}
-
-// Cache is a two-tier (memory + disk) write-back cache.
+// Cache is a two-tier (memory + disk) cache.
 // Memory tier: Ristretto (TinyLFU).  Disk tier: bbolt (B+ tree).
 type Cache struct {
 	mem      *ristretto.Cache[string, *Entry]
@@ -60,10 +54,8 @@ type Cache struct {
 	log      *slog.Logger
 	mu       sync.RWMutex // guards db pointer
 
-	// write-back buffer
-	pending chan writeReq
 	done    chan struct{}
-	flushWg sync.WaitGroup
+	closeWg sync.WaitGroup
 }
 
 // ---------------------------------------------------------------------------
@@ -76,9 +68,8 @@ type Cache struct {
 // memory-only.
 func New(maxMemoryMB, maxDiskGB int, dbPath string, log *slog.Logger) (*Cache, error) {
 	c := &Cache{
-		log:     log,
-		pending: make(chan writeReq, 1024),
-		done:    make(chan struct{}),
+		log:  log,
+		done: make(chan struct{}),
 	}
 
 	// ---- memory tier ----
@@ -105,9 +96,9 @@ func New(maxMemoryMB, maxDiskGB int, dbPath string, log *slog.Logger) (*Cache, e
 		}
 	}
 
-	// Always start background loop — no-ops when disk is nil.
-	c.flushWg.Add(1)
-	go c.backgroundLoop()
+	// Start cleanup loop
+	c.closeWg.Add(1)
+	go c.cleanupLoop()
 
 	log.Info("cache: initialized",
 		"memoryMB", maxMemoryMB,
@@ -174,8 +165,8 @@ func (c *Cache) Get(key string) (*Entry, bool) {
 	return entry, true
 }
 
-// Set stores entry under key.  Memory update is synchronous; disk write is
-// asynchronous via the write-back buffer.
+// Set stores entry under key in both memory and disk tiers.
+// Disk write is synchronous and transactional (ACID).
 func (c *Cache) Set(key string, entry *Entry) {
 	if c.mem != nil {
 		c.mem.Set(key, entry, int64(len(entry.Buffer)))
@@ -188,10 +179,102 @@ func (c *Cache) Set(key string, entry *Entry) {
 		return
 	}
 
+	de := diskEntry{
+		Buffer:      entry.Buffer,
+		ContentType: entry.ContentType,
+		CreatedAt:   time.Now().Unix(),
+		Size:        int64(len(entry.Buffer)),
+	}
+
+	err := db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(cacheBucket))
+		data, err := json.Marshal(de)
+		if err != nil {
+			return err
+		}
+		return b.Put([]byte(key), data)
+	})
+	if err != nil {
+		c.log.Warn("cache: bbolt write error", "key", key, "error", err)
+	}
+}
+
+// Close closes disk and memory tiers.
+func (c *Cache) Close() {
 	select {
-	case c.pending <- writeReq{key: key, entry: entry}:
+	case <-c.done:
 	default:
-		c.log.Warn("cache: write-back buffer full, dropping disk write")
+		close(c.done)
+	}
+	c.closeWg.Wait()
+
+	if c.mem != nil {
+		c.mem.Close()
+	}
+
+	c.mu.Lock()
+	db := c.db
+	c.db = nil
+	c.mu.Unlock()
+
+	if db != nil {
+		if err := db.Close(); err != nil {
+			c.log.Warn("cache: db close failed", "error", err)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Disk management
+// ---------------------------------------------------------------------------
+
+// openDisk opens (or creates) the bbolt database and sets c.db.
+func (c *Cache) openDisk() error {
+	dir := filepath.Dir(c.dbPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create cache dir: %w", err)
+	}
+
+	db, err := bolt.Open(c.dbPath, 0600, &bolt.Options{
+		Timeout:      5 * time.Second,
+		FreelistType: bolt.FreelistMapType,
+	})
+	if err != nil {
+		return err
+	}
+
+	err = db.Update(func(tx *bolt.Tx) error {
+		_, err := tx.CreateBucketIfNotExists([]byte(cacheBucket))
+		return err
+	})
+	if err != nil {
+		db.Close()
+		return err
+	}
+
+	c.mu.Lock()
+	c.db = db
+	c.mu.Unlock()
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// Cleanup
+// ---------------------------------------------------------------------------
+
+func (c *Cache) cleanupLoop() {
+	defer c.closeWg.Done()
+
+	ticker := time.NewTicker(cleanupInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			c.Cleanup()
+		case <-c.done:
+			return
+		}
 	}
 }
 
@@ -207,9 +290,7 @@ func (c *Cache) Cleanup() {
 		return
 	}
 
-	// Estimate disk usage by file size
-	dbPath := c.dbPath
-	fi, err := os.Stat(dbPath)
+	fi, err := os.Stat(c.dbPath)
 	if err != nil {
 		return
 	}
@@ -233,7 +314,7 @@ func (c *Cache) Cleanup() {
 		return b.ForEach(func(k, v []byte) error {
 			var de diskEntry
 			if err := json.Unmarshal(v, &de); err != nil {
-				return nil // skip malformed entries
+				return nil
 			}
 			keyCopy := make([]byte, len(k))
 			copy(keyCopy, k)
@@ -250,7 +331,6 @@ func (c *Cache) Cleanup() {
 		return
 	}
 
-	// Sort by creation time (oldest first)
 	sort.Slice(entries, func(i, j int) bool {
 		return entries[i].ts < entries[j].ts
 	})
@@ -278,145 +358,6 @@ func (c *Cache) Cleanup() {
 	if freed > 0 {
 		c.log.Info("cache: cleanup done", "freedMB", freed/1024/1024)
 	}
-}
-
-// Close performs a final flush, then closes disk and memory tiers.
-func (c *Cache) Close() {
-	select {
-	case <-c.done:
-	default:
-		close(c.done)
-	}
-	c.flushWg.Wait() // final drainAndFlush completes here
-
-	if c.mem != nil {
-		c.mem.Close()
-	}
-
-	c.mu.Lock()
-	db := c.db
-	c.db = nil
-	c.mu.Unlock()
-
-	if db != nil {
-		if err := db.Close(); err != nil {
-			c.log.Warn("cache: db close failed", "error", err)
-		}
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Disk management
-// ---------------------------------------------------------------------------
-
-// openDisk opens (or creates) the bbolt database and sets c.db.
-func (c *Cache) openDisk() error {
-	// Ensure parent directory exists
-	dir := filepath.Dir(c.dbPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("create cache dir: %w", err)
-	}
-
-	db, err := bolt.Open(c.dbPath, 0600, &bolt.Options{
-		Timeout:      5 * time.Second,
-		FreelistType: bolt.FreelistMapType, // faster freelist
-	})
-	if err != nil {
-		return err
-	}
-
-	// Ensure bucket exists
-	err = db.Update(func(tx *bolt.Tx) error {
-		_, err := tx.CreateBucketIfNotExists([]byte(cacheBucket))
-		return err
-	})
-	if err != nil {
-		db.Close()
-		return err
-	}
-
-	c.mu.Lock()
-	c.db = db
-	c.mu.Unlock()
-	return nil
-}
-
-// ---------------------------------------------------------------------------
-// Background loop
-// ---------------------------------------------------------------------------
-
-func (c *Cache) backgroundLoop() {
-	defer c.flushWg.Done()
-
-	ft := time.NewTicker(flushInterval)
-	ct := time.NewTicker(cleanupInterval)
-	defer ft.Stop()
-	defer ct.Stop()
-
-	for {
-		select {
-		case <-ft.C:
-			c.drainAndFlush()
-		case <-ct.C:
-			c.Cleanup()
-		case <-c.done:
-			c.drainAndFlush() // final drain
-			return
-		}
-	}
-}
-
-// drainAndFlush drains the pending write-back channel and commits all entries
-// in a single bbolt transaction.  Checks db availability BEFORE draining so
-// items stay in the channel when db is nil.
-func (c *Cache) drainAndFlush() {
-	c.mu.RLock()
-	db := c.db
-	c.mu.RUnlock()
-	if db == nil {
-		return // don't drain — keep items in channel for later
-	}
-
-	// drain all pending entries (non-blocking)
-	var batch []writeReq
-	for {
-		select {
-		case req := <-c.pending:
-			batch = append(batch, req)
-		default:
-			goto flush
-		}
-	}
-
-flush:
-	if len(batch) == 0 {
-		return
-	}
-
-	err := db.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(cacheBucket))
-		for _, r := range batch {
-			de := diskEntry{
-				Buffer:      r.entry.Buffer,
-				ContentType: r.entry.ContentType,
-				CreatedAt:   time.Now().Unix(),
-				Size:        int64(len(r.entry.Buffer)),
-			}
-			data, err := json.Marshal(de)
-			if err != nil {
-				return err
-			}
-			if err := b.Put([]byte(r.key), data); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		c.log.Warn("cache: flush failed", "count", len(batch), "error", err)
-		return
-	}
-	c.log.Debug("cache: flushed", "count", len(batch))
 }
 
 // ---------------------------------------------------------------------------
