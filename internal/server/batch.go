@@ -18,6 +18,7 @@ import (
 )
 
 const maxBatchImages = 20
+const maxAsyncBatchImages = 50
 
 type batchRequestItem struct {
 	UUID   string                 `json:"uuid"`

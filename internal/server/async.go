@@ -85,9 +85,9 @@ func (h *AsyncBatchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(req.Items) > maxBatchImages {
+	if len(req.Items) > maxAsyncBatchImages {
 		sendJSON(w, http.StatusBadRequest, map[string]string{
-			"error": fmt.Sprintf("Maximum %d images allowed per batch", maxBatchImages),
+			"error": fmt.Sprintf("Maximum %d images allowed per async batch", maxAsyncBatchImages),
 		})
 		return
 	}
