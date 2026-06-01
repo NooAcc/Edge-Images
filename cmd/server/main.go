@@ -59,6 +59,7 @@ func main() {
 
 	imageHandler := server.NewHandler(cfg, al, c, f, log)
 	batchHandler := server.NewBatchHandler(cfg, al, c, f, log)
+	asyncBatchHandler := server.NewAsyncBatchHandler(cfg, al, c, f, log)
 
 	mux := http.NewServeMux()
 
@@ -70,6 +71,7 @@ func main() {
 
 	mux.Handle("/api/media/", imageHandler)
 	mux.Handle("/api/batch", batchHandler)
+	mux.Handle("/api/batch/async", asyncBatchHandler)
 
 	publicDir := "./public"
 	if dir := os.Getenv("PUBLIC_DIR"); dir != "" {
