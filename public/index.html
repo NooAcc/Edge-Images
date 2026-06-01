@@ -125,7 +125,7 @@
           <p class="eyebrow">Go 媒体处理服务</p>
           <h1 id="page-title">动态媒体处理服务</h1>
           <p class="lead">
-            传入远程图片或视频 URL，自动完成缩放、裁剪、格式转换。支持 Vercel 和 Docker 部署，根据平台自动优化参数和缓存策略。
+            传入远程图片或视频 URL，自动完成缩放、裁剪、格式转换。支持 HuggingFace Spaces 和 Docker 部署，根据平台自动优化参数和缓存策略。
           </p>
           <div class="actions">
             <a class="button" href="/images.html">开始使用</a>
@@ -148,7 +148,7 @@
           </article>
           <article class="card">
             <h3>批量处理</h3>
-            <p>两阶段队列：先并发下载源媒体，再限流处理，支持全局并发控制</p>
+            <p>两阶段队列：先并发下载源媒体，再限流处理。支持同步（最多 20 张）和异步回调（最多 50 张）两种模式</p>
           </article>
           <article class="card">
             <h3>视频封面</h3>
@@ -160,7 +160,7 @@
           </article>
           <article class="card">
             <h3>两级缓存</h3>
-            <p>Docker 部署自动启用内存 LRU + 磁盘缓存，减少重复处理</p>
+            <p>Docker 部署自动启用 ristretto 内存 + 文件系统磁盘缓存，减少重复处理</p>
           </article>
           <article class="card">
             <h3>元信息查询</h3>
@@ -185,7 +185,7 @@
         <p style="margin-top: 14px; color: var(--muted)">
           源地址需要 URL 编码，直接放入 <code>&lt;img&gt;</code> 的 <code>src</code> 属性即可使用。
         </p>
-        <h3 style="margin: 24px 0 8px; font-size: 16px;">批量处理 <span style="font-size: 12px; color: var(--muted);">（仅 Hugging Face 平台）</span></h3>
+        <h3 style="margin: 24px 0 8px; font-size: 16px;">同步批量 <span style="font-size: 12px; color: var(--muted);">（最多 20 张）</span></h3>
         <div class="endpoint">
           <code id="example-batch">POST /api/batch</code>
           <button class="copy" type="button" data-copy="#example-batch-req">复制</button>
@@ -196,6 +196,23 @@
     {"uuid":"img-001","url":"https://example.com/a.jpg","params":{"width":200}},
     {"uuid":"img-002","url":"https://example.com/b.png","params":{"format":"json"}}
   ]'</pre>
+        <h3 style="margin: 24px 0 8px; font-size: 16px;">异步批量 <span style="font-size: 12px; color: var(--muted);">（最多 50 张，回调通知）</span></h3>
+        <div class="endpoint">
+          <code id="example-async-batch">POST /api/batch/async</code>
+          <button class="copy" type="button" data-copy="#example-async-batch-req">复制</button>
+        </div>
+        <pre id="example-async-batch-req" style="margin-top: 8px; padding: 12px; background: var(--code); color: #e9f1f7; border-radius: 8px; font-size: 13px; overflow-x: auto;">curl -X POST /api/batch/async \
+  -H "Content-Type: application/json" \
+  -d '{
+    "items": [
+      {"uuid":"img-001","url":"https://example.com/a.jpg","params":{"width":200}}
+    ],
+    "callbackUrl": "https://your-service.com/callback",
+    "jobId": "my-job-123"
+  }'</pre>
+        <p style="margin-top: 8px; color: var(--muted); font-size: 13px;">
+          服务端立即返回 <code>202 Accepted</code>，处理完成后通过 <code>callbackUrl</code> POST 回调结果。
+        </p>
       </section>
 
       <section id="platform" aria-labelledby="platform-title">
@@ -218,15 +235,15 @@
             </tr>
             <tr style="border-bottom:1px solid var(--line);">
               <td style="padding:8px 12px;">批量处理</td>
-              <td style="padding:8px 12px;">支持（最多 20 张，处理并发 4）</td>
+              <td style="padding:8px 12px;">支持（同步最多 20 张，异步最多 50 张）</td>
             </tr>
             <tr style="border-bottom:1px solid var(--line);">
               <td style="padding:8px 12px;">缓存策略</td>
-              <td style="padding:8px 12px;">内存 LRU + 磁盘</td>
+              <td style="padding:8px 12px;">ristretto 内存 + 文件系统磁盘</td>
             </tr>
             <tr style="border-bottom:1px solid var(--line);">
               <td style="padding:8px 12px;">内存缓存</td>
-              <td style="padding:8px 12px;">4096 MB</td>
+              <td style="padding:8px 12px;">3072 MB</td>
             </tr>
             <tr>
               <td style="padding:8px 12px;">磁盘缓存</td>

@@ -30,23 +30,26 @@
     <main class="shell">
       <h1>批量处理</h1>
       <p class="lead">
-        一次请求处理多张图片或视频，全部完成后返回结果。最多 20 张/批次。
+        一次请求处理多张图片或视频。支持同步模式（最多 20 张，等待返回）和异步模式（最多 50 张，回调通知）。
       </p>
 
       <section aria-labelledby="info-title">
         <h2 id="info-title">功能说明</h2>
         <div class="panel">
           <p>
-            一次请求处理多张图片或视频，全部完成后返回结果。支持所有单图处理功能，包括视频封面提取和元信息查询。
+            一次请求处理多张图片或视频，支持所有单图处理功能，包括视频封面提取和元信息查询。
           </p>
           <p style="margin-top: 12px">
-            <strong>处理机制：</strong>采用两阶段队列处理——第一阶段并发下载所有源媒体（有缓存则跳过），第二阶段通过全局并发限制器执行图片处理。处理并发数默认为 4，可通过 <code>BATCH_CONCURRENCY</code> 环境变量调整。
+            <strong>同步模式（/api/batch）：</strong>最多 20 张，采用两阶段队列处理——第一阶段并发下载所有源媒体（有缓存则跳过），第二阶段并发执行图片处理，全部完成后返回结果。
+          </p>
+          <p style="margin-top: 12px">
+            <strong>异步模式（/api/batch/async）：</strong>最多 50 张，服务端立即返回 <code>202 Accepted</code>，后台处理完成后通过 <code>callbackUrl</code> POST 回调结果。回调失败时最多重试 3 次（指数退避）。
           </p>
         </div>
       </section>
 
       <section aria-labelledby="quickstart-title">
-        <h2 id="quickstart-title">快速调用</h2>
+        <h2 id="quickstart-title">同步批量 - 快速调用</h2>
         <div class="endpoint">
           <code id="batch-example">POST /api/batch</code>
           <button class="copy" type="button" data-copy="#batch-curl">复制</button>
@@ -236,6 +239,134 @@ Content-Type: application/json; charset=utf-8
             </tr>
           </tbody>
         </table>
+      </section>
+
+      <section aria-labelledby="async-title">
+        <h2 id="async-title">异步批量 - 快速调用</h2>
+        <div class="endpoint">
+          <code id="async-batch-example">POST /api/batch/async</code>
+          <button class="copy" type="button" data-copy="#async-batch-curl">复制</button>
+        </div>
+        <pre id="async-batch-curl" style="margin-top: 8px;">curl -X POST /api/batch/async \
+  -H "Content-Type: application/json" \
+  -d '{
+    "items": [
+      {"uuid":"img-001","url":"https://example.com/a.jpg","params":{"width":200}},
+      {"uuid":"img-002","url":"https://example.com/b.png","params":{"format":"json"}}
+    ],
+    "callbackUrl": "https://your-service.com/callback",
+    "jobId": "my-job-123"
+  }'</pre>
+      </section>
+
+      <section aria-labelledby="async-body-title">
+        <h2 id="async-body-title">异步请求体</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>字段</th>
+              <th>类型</th>
+              <th>必填</th>
+              <th>说明</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>items</code></td>
+              <td>array</td>
+              <td>是</td>
+              <td>图片列表，格式同同步批量（最多 50 张）</td>
+            </tr>
+            <tr>
+              <td><code>callbackUrl</code></td>
+              <td>string</td>
+              <td>是</td>
+              <td>处理完成后接收结果的回调地址</td>
+            </tr>
+            <tr>
+              <td><code>jobId</code></td>
+              <td>string</td>
+              <td>否</td>
+              <td>自定义任务 ID，不填则自动生成</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section aria-labelledby="async-response-title">
+        <h2 id="async-response-title">异步即时响应（202 Accepted）</h2>
+        <div class="json-preview">{
+  "jobId": "my-job-123",
+  "status": "accepted"
+}</div>
+      </section>
+
+      <section aria-labelledby="callback-title">
+        <h2 id="callback-title">回调响应体</h2>
+        <p>处理完成后，服务端 POST 以下 JSON 到 <code>callbackUrl</code>：</p>
+        <table>
+          <thead>
+            <tr>
+              <th>字段</th>
+              <th>类型</th>
+              <th>说明</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>jobId</code></td>
+              <td>string</td>
+              <td>任务 ID</td>
+            </tr>
+            <tr>
+              <td><code>status</code></td>
+              <td>string</td>
+              <td><code>completed</code>（全部成功）或 <code>partial</code>（部分失败）</td>
+            </tr>
+            <tr>
+              <td><code>items</code></td>
+              <td>array</td>
+              <td>原始请求项列表（uuid、url、params）</td>
+            </tr>
+            <tr>
+              <td><code>results</code></td>
+              <td>object</td>
+              <td>以 uuid 为键的结果映射，格式同同步批量响应</td>
+            </tr>
+            <tr>
+              <td><code>timestamp</code></td>
+              <td>string</td>
+              <td>ISO 8601 时间戳</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section aria-labelledby="callback-example-title">
+        <h2 id="callback-example-title">回调响应示例</h2>
+        <div class="json-preview">POST https://your-service.com/callback
+Content-Type: application/json; charset=utf-8
+X-Job-ID: my-job-123
+
+{
+  "jobId": "my-job-123",
+  "status": "completed",
+  "items": [
+    {"uuid": "img-001", "url": "https://example.com/a.jpg", "params": {"width": 200}},
+    {"uuid": "img-002", "url": "https://example.com/b.png", "params": {"format": "json"}}
+  ],
+  "results": {
+    "img-001": {
+      "success": true,
+      "data": {"base64": "UklGRi...", "contentType": "image/webp"}
+    },
+    "img-002": {
+      "success": true,
+      "data": {"width": 800, "height": 600, "format": "png", "channels": 4, "sourceUrl": "https://example.com/b.png", "sourceContentType": "image/png", "sourceSize": 123456}
+    }
+  },
+  "timestamp": "2026-06-01T12:00:00Z"
+}</div>
       </section>
     </main>
 

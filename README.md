@@ -17,9 +17,9 @@ Go 语言重写的图片和视频处理服务。下载远程媒体，按参数�
 - 支持 WebP、JPEG、PNG、AVIF 输出，质量可控
 - 支持视频封面提取（MP4/WebM）和元数据查询
 - `format=json` 返回图片或视频元信息
-- 批量处理：两阶段队列处理，先并发下载再限流处理
+- 批量处理：两阶段队列处理，先并发下载再限流处理，支持同步（最多 20 张）和异步回调（最多 50 张）两种模式
 - 平台感知配置：根据部署平台自动调整参数和缓存策略
-- 两级缓存（ristretto 内存 LRU + Pebble 磁盘）：Docker 部署下自动启用
+- 两级缓存（ristretto 内存 + 文件系统磁盘）：Docker 部署下自动启用
 - 20 秒源媒体下载超时
 - 处理失败时降级返回原图
 - 响应头包含 CDN 缓存控制和媒体元信息
@@ -66,6 +66,29 @@ GET /api/media/<encoded-source-url>
 POST /api/batch
 Content-Type: application/json
 ```
+### 异步批量处理
+
+```text
+POST /api/batch/async
+Content-Type: application/json
+```
+
+异步模式接受更大的批次（最多 50 张），服务端返回 `202 Accepted` 后在后台处理，完成后通过 `callbackUrl` POST 回调结果。
+
+请求体示例：
+
+```json
+{
+  "items": [
+    { "uuid": "img-1", "url": "https://example.com/photo.jpg", "params": { "width": 800, "format": "webp" } }
+  ],
+  "callbackUrl": "https://your-service.com/callback",
+  "jobId": "my-job-123"
+}
+```
+
+回调响应体包含 `jobId`、`status`（`completed` 或 `partial`）、`items`、`results` 和 `timestamp`。回调失败时最多重试 3 次（指数退避）。
+
 
 ### 查询参数
 
@@ -89,8 +112,7 @@ Content-Type: application/json
 | `PLATFORM`           | `huggingface` | 部署平台                           |
 | `MAX_DIMENSION`      | `2048` | 最大输出尺寸（px）                       |
 | `DEFAULT_QUALITY`    | `90`   | 默认输出质量                             |
-| `BATCH_CONCURRENCY`  | `4`    | 批量处理并发数                           |
-| `CACHE_MAX_MEMORY_MB`| `4096` | 内存缓存大小（MB）                       |
+| `CACHE_MAX_MEMORY_MB`| `3072` | 内存缓存大小（MB）                       |
 | `CACHE_MAX_DISK_GB`  | `50`   | 磁盘缓存大小（GB）                       |
 | `IMAGE_URL_ALLOWLIST`| -      | 源媒体域名白名单                         |
 | `IMAGE_DEBUG_LOGS`   | `0`    | 设为 `1` 启用调试日志                    |
@@ -101,7 +123,7 @@ Content-Type: application/json
 cmd/server/main.go     — 入口，初始化所有组件
 internal/
   config/              — 平台配置和环境变量
-  cache/               — 两级缓存（ristretto + Pebble）
+  cache/               — 两级缓存（ristretto + 文件系统）
   processor/           — 图片处理（govips）和视频处理（ffmpeg）
   fetcher/             — HTTP 下载，重试，Range 请求
   params/              — 查询参数解析
@@ -116,6 +138,6 @@ public/                — 前端静态文件
 1. **goroutine 并发模型**：每个请求一个 goroutine，I/O 等待不阻塞 CPU
 2. **govips (libvips)**：底层和 sharp 相同，但 CGO 调用开销更小
 3. **ristretto 缓存**：基于 LFU 变体，命中率高于手动 LRU
-4. **Pebble 磁盘缓存**：LSM-tree 引擎，自动 compaction 回收空间
+4. **文件系统磁盘缓存**：纯文件系统缓存，无需额外数据库引擎
 5. **编译为静态二进制**：Docker 镜像更小，启动更快
 6. **优雅关闭**：drain 现有请求后退出
