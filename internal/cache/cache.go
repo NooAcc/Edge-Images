@@ -2,18 +2,19 @@ package cache
 
 import (
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/dgraph-io/ristretto/v2"
-	_ "github.com/mattn/go-sqlite3"
 )
 
 // ---------------------------------------------------------------------------
@@ -22,7 +23,8 @@ import (
 
 const (
 	cleanupInterval = 10 * time.Minute // disk-usage check period
-	dbFilename      = "cache.db"       // SQLite数据库文件名
+	metaExt         = ".meta"          // sidecar metadata extension
+	filesDir        = "files"          // subdirectory for cached files
 )
 
 // ---------------------------------------------------------------------------
@@ -35,25 +37,25 @@ type Entry struct {
 	ContentType string
 }
 
-// cacheEntry represents a row in the SQLite cache_entries table.
-type cacheEntry struct {
-	Key         string
-	ContentType string
-	FilePath    string
-	Size        int64
-	CreatedAt   int64
-	AccessedAt  int64
+// metaFile is the JSON structure stored in .meta sidecar files.
+type metaFile struct {
+	ContentType string `json:"ct"`
+}
+
+// fileEntry tracks a discovered file during cleanup walks.
+type fileEntry struct {
+	dataPath string
+	size     int64
+	mtime    time.Time
 }
 
 // Cache is a two-tier (memory + disk) cache.
-// Memory tier: Ristretto (TinyLFU).  Disk tier: SQLite + filesystem.
+// Memory tier: Ristretto (TinyLFU).  Disk tier: pure filesystem (no database).
 type Cache struct {
-	mem       *ristretto.Cache[string, *Entry]
-	db        *sql.DB
-	basePath  string // base storage path for SQLite db + cache files
-	maxBytes  int64
-	log       *slog.Logger
-	mu        sync.RWMutex // guards db pointer
+	mem      *ristretto.Cache[string, *Entry]
+	basePath string // base storage path for cache files
+	maxBytes int64
+	log      *slog.Logger
 
 	done    chan struct{}
 	closeWg sync.WaitGroup
@@ -88,12 +90,14 @@ func New(maxMemoryMB, maxDiskGB int, basePath string, log *slog.Logger) (*Cache,
 	}
 
 	// ---- disk tier ----
+	diskEnabled := false
 	if maxDiskGB > 0 && basePath != "" {
 		c.maxBytes = int64(maxDiskGB) * 1024 * 1024 * 1024
 
-		if err := c.openDisk(); err != nil {
-			log.Error("cache: disk open failed, disabling disk tier", "error", err)
-			// Don't fail — just run memory-only
+		if err := c.initDisk(); err != nil {
+			log.Error("cache: disk init failed, disabling disk tier", "error", err)
+		} else {
+			diskEnabled = true
 		}
 	}
 
@@ -104,7 +108,7 @@ func New(maxMemoryMB, maxDiskGB int, basePath string, log *slog.Logger) (*Cache,
 	log.Info("cache: initialized",
 		"memoryMB", maxMemoryMB,
 		"diskGB", maxDiskGB,
-		"diskEnabled", c.db != nil)
+		"diskEnabled", diskEnabled)
 
 	return c, nil
 }
@@ -124,44 +128,25 @@ func (c *Cache) Get(key string) (*Entry, bool) {
 	}
 
 	// slow path — disk
-	c.mu.RLock()
-	db := c.db
-	c.mu.RUnlock()
-	if db == nil {
+	if c.maxBytes <= 0 {
 		return nil, false
 	}
 
-	var entry cacheEntry
-	err := db.QueryRow(`
-		SELECT key, content_type, file_path, size, created_at, accessed_at
-		FROM cache_entries WHERE key = ?
-	`, key).Scan(
-		&entry.Key, &entry.ContentType, &entry.FilePath,
-		&entry.Size, &entry.CreatedAt, &entry.AccessedAt,
-	)
+	dataPath := c.buildFilePath(key)
+	buffer, err := os.ReadFile(dataPath)
 	if err != nil {
-		if err != sql.ErrNoRows {
-			c.log.Warn("cache: sqlite read error", "key", key, "error", err)
-		}
 		return nil, false
 	}
 
-	// Read file from filesystem
-	buffer, err := os.ReadFile(entry.FilePath)
-	if err != nil {
-		c.log.Warn("cache: file read error", "key", key, "path", entry.FilePath, "error", err)
-		// Remove invalid entry from database
-		c.deleteEntry(key)
-		return nil, false
-	}
+	ct := c.readMeta(key)
+
+	// Update mtime so cleanup sees this as recently used
+	_ = os.Chtimes(dataPath, time.Now(), time.Now())
 
 	result := &Entry{
 		Buffer:      buffer,
-		ContentType: entry.ContentType,
+		ContentType: ct,
 	}
-
-	// Update accessed_at timestamp (async)
-	go c.updateAccessTime(key)
 
 	// promote to memory
 	if c.mem != nil {
@@ -171,50 +156,35 @@ func (c *Cache) Get(key string) (*Entry, bool) {
 }
 
 // Set stores entry under key in both memory and disk tiers.
-// Disk write is synchronous and transactional.
 func (c *Cache) Set(key string, entry *Entry) {
 	if c.mem != nil {
 		c.mem.Set(key, entry, int64(len(entry.Buffer)))
 	}
 
-	c.mu.RLock()
-	db := c.db
-	c.mu.RUnlock()
-	if db == nil {
+	if c.maxBytes <= 0 {
 		return
 	}
 
-	// Determine file path based on key type
-	filePath := c.buildFilePath(key)
+	dataPath := c.buildFilePath(key)
 
-	// Ensure directory exists
-	dir := filepath.Dir(filePath)
+	// Ensure parent directory exists
+	dir := filepath.Dir(dataPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		c.log.Warn("cache: create dir failed", "path", dir, "error", err)
 		return
 	}
 
-	// Write file to filesystem
-	if err := os.WriteFile(filePath, entry.Buffer, 0644); err != nil {
+	// Write data file
+	if err := os.WriteFile(dataPath, entry.Buffer, 0644); err != nil {
 		c.log.Warn("cache: file write failed", "key", key, "error", err)
 		return
 	}
 
-	// Insert or replace entry in SQLite
-	now := time.Now().Unix()
-	_, err := db.Exec(`
-		INSERT OR REPLACE INTO cache_entries
-		(key, content_type, file_path, size, created_at, accessed_at)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`, key, entry.ContentType, filePath, int64(len(entry.Buffer)), now, now)
-	if err != nil {
-		c.log.Warn("cache: sqlite write failed", "key", key, "error", err)
-		// Clean up file if database write failed
-		os.Remove(filePath)
-	}
+	// Write sidecar metadata
+	c.writeMeta(key, entry.ContentType)
 }
 
-// Close closes disk and memory tiers.
+// Close stops the cleanup loop. Memory tier is closed by the caller if needed.
 func (c *Cache) Close() {
 	select {
 	case <-c.done:
@@ -226,81 +196,54 @@ func (c *Cache) Close() {
 	if c.mem != nil {
 		c.mem.Close()
 	}
+}
 
-	c.mu.Lock()
-	db := c.db
-	c.db = nil
-	c.mu.Unlock()
-
-	if db != nil {
-		if err := db.Close(); err != nil {
-			c.log.Warn("cache: db close failed", "error", err)
-		}
+// GetStats returns cache statistics by walking the filesystem.
+func (c *Cache) GetStats() (diskEntries int64, diskSize int64, err error) {
+	if c.maxBytes <= 0 {
+		return 0, 0, nil
 	}
+
+	filesDir := filepath.Join(c.basePath, filesDir)
+	err = filepath.WalkDir(filesDir, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return nil // skip inaccessible entries
+		}
+		if d.IsDir() || filepath.Ext(path) == metaExt {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return nil
+		}
+		diskEntries++
+		diskSize += info.Size()
+		return nil
+	})
+
+	return diskEntries, diskSize, err
 }
 
 // ---------------------------------------------------------------------------
 // Disk management
 // ---------------------------------------------------------------------------
 
-// openDisk opens (or creates) the SQLite database and sets c.db.
-func (c *Cache) openDisk() error {
-	// Create base directory if it doesn't exist
+// initDisk ensures the base cache directory structure exists.
+func (c *Cache) initDisk() error {
 	if err := os.MkdirAll(c.basePath, 0755); err != nil {
 		return fmt.Errorf("create cache dir: %w", err)
 	}
-
-	dbPath := filepath.Join(c.basePath, dbFilename)
-	db, err := sql.Open("sqlite3", dbPath+"?_journal_mode=WAL&_busy_timeout=5000&_foreign_keys=ON")
-	if err != nil {
-		return fmt.Errorf("open sqlite: %w", err)
+	filesPath := filepath.Join(c.basePath, filesDir)
+	if err := os.MkdirAll(filesPath, 0755); err != nil {
+		return fmt.Errorf("create files dir: %w", err)
 	}
-
-	// Verify connection
-	if err := db.Ping(); err != nil {
-		db.Close()
-		return fmt.Errorf("ping sqlite: %w", err)
-	}
-
-	// Create cache_entries table if it doesn't exist
-	if _, err := db.Exec(`
-		CREATE TABLE IF NOT EXISTS cache_entries (
-			key TEXT PRIMARY KEY,
-			content_type TEXT NOT NULL,
-			file_path TEXT NOT NULL,
-			size INTEGER NOT NULL,
-			created_at INTEGER NOT NULL,
-			accessed_at INTEGER NOT NULL
-		)
-	`); err != nil {
-		db.Close()
-		return fmt.Errorf("create table: %w", err)
-	}
-
-	// Create indexes for efficient cleanup queries
-	if _, err := db.Exec(`
-		CREATE INDEX IF NOT EXISTS idx_created_at ON cache_entries(created_at)
-	`); err != nil {
-		db.Close()
-		return fmt.Errorf("create index: %w", err)
-	}
-
-	if _, err := db.Exec(`
-		CREATE INDEX IF NOT EXISTS idx_accessed_at ON cache_entries(accessed_at)
-	`); err != nil {
-		db.Close()
-		return fmt.Errorf("create index: %w", err)
-	}
-
-	c.mu.Lock()
-	c.db = db
-	c.mu.Unlock()
 	return nil
 }
 
 // buildFilePath constructs the filesystem path for a cache key.
+//
+//	<basePath>/files/<keyType>/<hash[:2]>/<hash>
 func (c *Cache) buildFilePath(key string) string {
-	// Extract key type (source, meta, processed)
 	parts := strings.SplitN(key, ":", 2)
 	keyType := "other"
 	hash := key
@@ -309,54 +252,48 @@ func (c *Cache) buildFilePath(key string) string {
 		hash = parts[1]
 	}
 
-	// Create directory structure: basePath/files/keyType/hash
-	// Split hash into 2-char prefix directories for better filesystem distribution
 	prefix := ""
 	if len(hash) >= 2 {
 		prefix = hash[:2]
 	}
-	return filepath.Join(c.basePath, "files", keyType, prefix, hash)
+	return filepath.Join(c.basePath, filesDir, keyType, prefix, hash)
 }
 
-// deleteEntry removes an entry from the database and filesystem.
+// metaPath returns the sidecar .meta file path for a given key.
+func (c *Cache) metaPath(key string) string {
+	return c.buildFilePath(key) + metaExt
+}
+
+// readMeta reads the content type from the .meta sidecar file.
+// Returns "application/octet-stream" if the file is missing or unreadable.
+func (c *Cache) readMeta(key string) string {
+	mp := c.metaPath(key)
+	data, err := os.ReadFile(mp)
+	if err != nil {
+		return "application/octet-stream"
+	}
+	var m metaFile
+	if err := json.Unmarshal(data, &m); err != nil || m.ContentType == "" {
+		return "application/octet-stream"
+	}
+	return m.ContentType
+}
+
+// writeMeta writes the content type to the .meta sidecar file.
+func (c *Cache) writeMeta(key string, contentType string) {
+	mp := c.metaPath(key)
+	data, _ := json.Marshal(metaFile{ContentType: contentType})
+	if err := os.WriteFile(mp, data, 0644); err != nil {
+		c.log.Warn("cache: meta write failed", "key", key, "error", err)
+	}
+}
+
+// deleteEntry removes a cached file and its sidecar from the filesystem.
 func (c *Cache) deleteEntry(key string) {
-	c.mu.RLock()
-	db := c.db
-	c.mu.RUnlock()
-	if db == nil {
-		return
-	}
-
-	var filePath string
-	err := db.QueryRow("SELECT file_path FROM cache_entries WHERE key = ?", key).Scan(&filePath)
-	if err != nil {
-		return
-	}
-
-	// Delete from database
-	if _, err := db.Exec("DELETE FROM cache_entries WHERE key = ?", key); err != nil {
-		c.log.Warn("cache: delete from db failed", "key", key, "error", err)
-	}
-
-	// Delete file
-	if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
-		c.log.Warn("cache: delete file failed", "key", key, "path", filePath, "error", err)
-	}
-}
-
-// updateAccessTime updates the accessed_at timestamp for a key.
-func (c *Cache) updateAccessTime(key string) {
-	c.mu.RLock()
-	db := c.db
-	c.mu.RUnlock()
-	if db == nil {
-		return
-	}
-
-	_, err := db.Exec("UPDATE cache_entries SET accessed_at = ? WHERE key = ?", time.Now().Unix(), key)
-	if err != nil {
-		c.log.Warn("cache: update access time failed", "key", key, "error", err)
-	}
+	dp := c.buildFilePath(key)
+	mp := c.metaPath(key)
+	_ = os.Remove(dp)
+	_ = os.Remove(mp)
 }
 
 // ---------------------------------------------------------------------------
@@ -379,106 +316,86 @@ func (c *Cache) cleanupLoop() {
 	}
 }
 
-// Cleanup evicts the oldest entries when disk usage exceeds the configured
-// limit, reclaiming down to 90%.
+// Cleanup evicts the oldest entries (by mtime) when disk usage exceeds the
+// configured limit, reclaiming down to 90%.
 func (c *Cache) Cleanup() {
-	c.mu.RLock()
-	db := c.db
-	maxBytes := c.maxBytes
-	c.mu.RUnlock()
-
-	if db == nil || maxBytes <= 0 {
+	if c.maxBytes <= 0 {
 		return
 	}
 
-	// Calculate current disk usage from database
-	usage, err := c.calculateDiskUsage()
+	entries, totalSize, err := c.collectFiles()
 	if err != nil {
-		c.log.Warn("cache: calculate disk usage failed", "error", err)
+		c.log.Warn("cache: cleanup walk failed", "error", err)
 		return
 	}
 
-	if usage <= maxBytes {
+	if totalSize <= c.maxBytes {
 		return
 	}
 
-	target := maxBytes * 9 / 10
+	target := c.maxBytes * 9 / 10
+
+	// Sort oldest first (by mtime ascending)
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].mtime.Before(entries[j].mtime)
+	})
+
 	var freed int64
-
-	// Get oldest entries by created_at
-	rows, err := db.Query(`
-		SELECT key, file_path, size
-		FROM cache_entries
-		ORDER BY created_at ASC
-	`)
-	if err != nil {
-		c.log.Warn("cache: cleanup query failed", "error", err)
-		return
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		if usage-freed <= target {
+	for _, e := range entries {
+		if totalSize-freed <= target {
 			break
 		}
 
-		var key, filePath string
-		var size int64
-		if err := rows.Scan(&key, &filePath, &size); err != nil {
-			c.log.Warn("cache: cleanup scan failed", "error", err)
+		// Remove data file
+		if err := os.Remove(e.dataPath); err != nil && !os.IsNotExist(err) {
+			c.log.Warn("cache: cleanup delete file failed", "path", e.dataPath, "error", err)
 			continue
 		}
+		// Remove sidecar meta file (ignore if absent)
+		_ = os.Remove(e.dataPath + metaExt)
 
-		// Delete from database
-		if _, err := db.Exec("DELETE FROM cache_entries WHERE key = ?", key); err != nil {
-			c.log.Warn("cache: cleanup delete from db failed", "key", key, "error", err)
-			continue
-		}
-
-		// Delete file
-		if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
-			c.log.Warn("cache: cleanup delete file failed", "key", key, "path", filePath, "error", err)
-		}
-
-		freed += size
+		freed += e.size
 	}
 
 	if freed > 0 {
-		c.log.Info("cache: cleanup done", "freedMB", freed/1024/1024)
+		c.log.Info("cache: cleanup done", "freedMB", freed/1024/1024, "entries", len(entries))
 	}
 }
 
-// calculateDiskUsage calculates the total size of all cached files from the database.
-func (c *Cache) calculateDiskUsage() (int64, error) {
-	c.mu.RLock()
-	db := c.db
-	c.mu.RUnlock()
-	if db == nil {
-		return 0, nil
-	}
-
+// collectFiles walks the cache files directory and returns all data files
+// (excluding .meta sidecars) with their sizes and modification times.
+func (c *Cache) collectFiles() ([]fileEntry, int64, error) {
+	var entries []fileEntry
 	var totalSize int64
-	err := db.QueryRow("SELECT COALESCE(SUM(size), 0) FROM cache_entries").Scan(&totalSize)
-	if err != nil {
-		return 0, err
-	}
-	return totalSize, nil
-}
 
-// GetStats returns cache statistics.
-func (c *Cache) GetStats() (diskEntries int64, diskSize int64, err error) {
-	c.mu.RLock()
-	db := c.db
-	c.mu.RUnlock()
-
-	if db != nil {
-		err = db.QueryRow("SELECT COUNT(*), COALESCE(SUM(size), 0) FROM cache_entries").Scan(&diskEntries, &diskSize)
-		if err != nil {
-			return 0, 0, err
+	root := filepath.Join(c.basePath, filesDir)
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return nil // skip inaccessible entries
 		}
-	}
+		if d.IsDir() {
+			return nil
+		}
+		// Skip .meta sidecar files
+		if filepath.Ext(path) == metaExt {
+			return nil
+		}
 
-	return diskEntries, diskSize, nil
+		info, err := d.Info()
+		if err != nil {
+			return nil
+		}
+
+		entries = append(entries, fileEntry{
+			dataPath: path,
+			size:     info.Size(),
+			mtime:    info.ModTime(),
+		})
+		totalSize += info.Size()
+		return nil
+	})
+
+	return entries, totalSize, err
 }
 
 // ---------------------------------------------------------------------------
