@@ -375,6 +375,7 @@ func (h *AsyncBatchHandler) sendCallback(callbackURL string, payload callbackPay
 		}
 		req.Header.Set("Content-Type", "application/json; charset=utf-8")
 		req.Header.Set("X-Job-ID", payload.JobID)
+		req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; EdgeImage/1.0)")
 
 		resp, err := client.Do(req)
 		if err != nil {
