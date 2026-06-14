@@ -60,7 +60,7 @@ func InitVips() {
 		MaxCacheFiles:    0,
 		MaxCacheSize:     0,
 		MaxCacheMem:      0,
-		ConcurrencyLevel: 0, // 0 = auto-detect (libvips uses nproc)
+		ConcurrencyLevel: 2, // match 2 vCPU, prevents thread thrashing
 	})
 	if err != nil {
 		panic(fmt.Sprintf("failed to start vips: %v", err))
