@@ -158,7 +158,8 @@ func extractFrame(buffer []byte, timeout time.Duration, log *slog.Logger) ([]byt
 		"-i", tmpPath,
 		"-vframes", "1",
 		"-f", "image2",
-		"-vcodec", "png",
+		"-c:v", "mjpeg",
+		"-q:v", "2",
 		"-y",
 		"pipe:1",
 	)

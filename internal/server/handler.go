@@ -90,7 +90,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		sourceBuffer = frame
-		sourceContentType = "image/png"
+		sourceContentType = "image/jpeg"
 	} else {
 		sourceCached := false
 		if h.cache != nil {

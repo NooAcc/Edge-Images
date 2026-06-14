@@ -191,7 +191,7 @@ func (h *BatchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				buffer = frame
-				contentType = "image/png"
+				contentType = "image/jpeg"
 			} else {
 				result, err := h.fetch.FetchImage(url)
 				if err != nil {

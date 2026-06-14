@@ -227,7 +227,7 @@ func (h *AsyncBatchHandler) processAsync(jobID string, items []batchRequestItem,
 					return
 				}
 				buffer = frame
-				contentType = "image/png"
+				contentType = "image/jpeg"
 			} else {
 				result, err := h.fetch.FetchImage(url)
 				if err != nil {
