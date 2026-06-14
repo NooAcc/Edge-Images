@@ -31,6 +31,7 @@ COPY --from=builder /app/edge-image /app/edge-image
 COPY public /app/public
 
 RUN mkdir -p /data
+VOLUME /data
 
 ENV PORT=3000
 ENV PLATFORM=huggingface

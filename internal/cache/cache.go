@@ -182,6 +182,8 @@ func (c *Cache) Set(key string, entry *Entry) {
 
 	// Write sidecar metadata
 	c.writeMeta(key, entry.ContentType)
+
+	c.log.Info("cache: disk write", "key", key, "bytes", len(entry.Buffer), "path", dataPath)
 }
 
 // Close stops the cleanup loop. Memory tier is closed by the caller if needed.

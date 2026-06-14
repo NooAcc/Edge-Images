@@ -97,6 +97,11 @@ func (h *AsyncBatchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if len(req.CallbackURL) < 8 || (req.CallbackURL[:7] != "http://" && req.CallbackURL[:8] != "https://") {
+		sendJSON(w, http.StatusBadRequest, map[string]string{"error": "callbackUrl must be a valid http/https URL"})
+		return
+	}
+
 	jobID := req.JobID
 	if jobID == "" {
 		jobID = fmt.Sprintf("ej-%d", time.Now().UnixNano())
