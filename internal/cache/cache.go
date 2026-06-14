@@ -123,6 +123,7 @@ func (c *Cache) Get(key string) (*Entry, bool) {
 	// fast path — memory
 	if c.mem != nil {
 		if e, ok := c.mem.Get(key); ok && e != nil {
+			c.log.Info("cache: mem hit", "key", key, "bytes", len(e.Buffer))
 			return e, true
 		}
 	}
@@ -152,6 +153,8 @@ func (c *Cache) Get(key string) (*Entry, bool) {
 	if c.mem != nil {
 		c.mem.Set(key, result, int64(len(result.Buffer)))
 	}
+
+	c.log.Info("cache: disk hit", "key", key, "bytes", len(result.Buffer), "path", dataPath)
 	return result, true
 }
 
