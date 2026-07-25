@@ -1,0 +1,49 @@
+name: Sync to Hugging Face
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-huggingface-main
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Push to Hugging Face
+        shell: bash
+        env:
+          HF_USERNAME: ${{ secrets.HF_USERNAME }}
+          HF_SPACE: ${{ secrets.HF_SPACE }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          set -euo pipefail
+          : "${HF_USERNAME:?HF_USERNAME secret is required}"
+          : "${HF_SPACE:?HF_SPACE secret is required}"
+          : "${HF_TOKEN:?HF_TOKEN secret is required}"
+
+          askpass="${RUNNER_TEMP}/hf-git-askpass.sh"
+          trap 'rm -f "${askpass}"' EXIT
+          cat >"${askpass}" <<'EOF'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\n' "$HF_USERNAME" ;;
+            *Password*) printf '%s\n' "$HF_TOKEN" ;;
+          esac
+          EOF
+          chmod 700 "${askpass}"
+
+          GIT_ASKPASS="${askpass}" GIT_TERMINAL_PROMPT=0 \
+            git push --quiet "https://huggingface.co/spaces/${HF_SPACE}" HEAD:main
