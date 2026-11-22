@@ -5,6 +5,7 @@ go 1.25.0
 require (
 	github.com/davidbyttow/govips/v2 v2.18.0
 	github.com/dgraph-io/ristretto/v2 v2.1.0
+	github.com/yalue/onnxruntime_go v1.31.0
 )
 
 require (

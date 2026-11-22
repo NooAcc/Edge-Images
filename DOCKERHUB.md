@@ -7,6 +7,7 @@ Go image and video processing service. Downloads remote media, applies resize/cr
 - WebP, JPEG, PNG, AVIF output with quality control
 - Video cover extraction (MP4/WebM) and metadata query
 - `format=json` returns image or video metadata
+- Optional built-in nsfwjs content classification (`nsfwjs` parameter)
 - Batch processing with two-phase queue: concurrent download, then rate-limited processing
 - Sync batch (up to 20 items) and async callback batch (up to 50 items)
 - Platform-aware configuration and caching strategy
@@ -55,6 +56,10 @@ Use the `-ffmpeg` tag when you need video frame extraction and video metadata pr
 | `CACHE_MAX_DISK_GB` | `50` | Disk cache size (GB) |
 | `IMAGE_URL_ALLOWLIST` | - | Source media domain allowlist (comma-separated) |
 | `IMAGE_DEBUG_LOGS` | `0` | Set to `1` to enable debug logs |
+| `NSFW_MODEL_PATH` | `models/nsfwjs_mobilenet_v2.onnx` | nsfwjs ONNX model path; missing file disables the feature |
+| `ONNXRUNTIME_LIB_PATH` | - | ONNX Runtime shared library path (set in the image) |
+| `NSFW_THRESHOLD` | `0.5` | `isNsfw` threshold (0-1); invalid values disable the classifier |
+| `NSFW_CONCURRENCY` | `2` | Max concurrent inferences; invalid values fall back to `2` |
 
 ## API
 
@@ -130,6 +135,46 @@ Returns plain text `ok`.
 | `background` | `FFFFFF` | Hex `RRGGBB` fill color used with `crop=none` |
 | `rotate` | - | Rotation: `90`, `180`, `270` |
 | `flip` | - | Flip direction: `h`, `v`, `hv` |
+| `nsfwjs` | - | Optional; response becomes JSON with base64 image + nsfw scores |
+
+### NSFW Classification (optional)
+
+Single-image, sync batch, and async batch requests accept `nsfwjs`. When enabled,
+the single-image response becomes JSON containing the image as base64 plus the
+five nsfwjs class scores. Batch `data` gains an `nsfw` field.
+
+```text
+GET /api/media/<encoded-source-url>?width=400&format=png&nsfwjs=1
+```
+
+```json
+{
+  "width": 800,
+  "height": 600,
+  "format": "webp",
+  "contentType": "image/webp",
+  "image": "UklGRi...",
+  "nsfw": {
+    "drawing": 0.02,
+    "hentai": 0.01,
+    "neutral": 0.91,
+    "porn": 0.03,
+    "sexy": 0.03,
+    "isNsfw": false
+  }
+}
+```
+
+- `isNsfw = hentai + porn + sexy >= NSFW_THRESHOLD` (default `0.5`; `drawing` is excluded).
+- The source image is classified (the cover frame for videos), independent of the
+  output size/crop/format, and predictions are cached by source URL.
+- Values: absent = off; empty, `1`, `true`, `yes`, `on` = on; `0`, `false`, `no`,
+  `off` = off; anything else is a 400.
+- `format=json` combined with an enabled `nsfwjs` is a 400.
+- A missing classifier returns 503 for single images; inference failures return 502.
+  In batches only the items that requested `nsfwjs` fail (`error` starts with `nsfwjs:`).
+- The bundled model is the nsfwjs default MobileNetV2 (MIT, ~9.8 MB). See
+  `models/README.md` for provenance and checksum.
 
 ## Notes
 

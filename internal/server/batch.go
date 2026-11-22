@@ -1,18 +1,22 @@
 package server
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 
 	"edge-image/internal/allowlist"
 	"edge-image/internal/cache"
 	"edge-image/internal/config"
 	"edge-image/internal/fetcher"
+	"edge-image/internal/nsfw"
 	"edge-image/internal/params"
 	"edge-image/internal/processor"
 )
@@ -32,22 +36,34 @@ type batchResponseItem struct {
 	Error   string      `json:"error,omitempty"`
 }
 
-type BatchHandler struct {
+// batchRunner owns the shared per-batch pipeline used by both the sync and
+// the async handlers.
+type batchRunner struct {
 	cfg   config.PlatformConfig
 	al    *allowlist.Allowlist
 	cache *cache.Cache
 	fetch *fetcher.Fetcher
+	nsfw  *nsfwService
 	log   *slog.Logger
 }
 
-func NewBatchHandler(cfg config.PlatformConfig, al *allowlist.Allowlist, c *cache.Cache, f *fetcher.Fetcher, log *slog.Logger) *BatchHandler {
-	return &BatchHandler{
+func newBatchRunner(cfg config.PlatformConfig, al *allowlist.Allowlist, c *cache.Cache, f *fetcher.Fetcher, classifier nsfw.Classifier, log *slog.Logger) *batchRunner {
+	return &batchRunner{
 		cfg:   cfg,
 		al:    al,
 		cache: c,
 		fetch: f,
+		nsfw:  newNSFWService(classifier, c, log, cfg.NSFW.Concurrency),
 		log:   log,
 	}
+}
+
+type BatchHandler struct {
+	runner *batchRunner
+}
+
+func NewBatchHandler(cfg config.PlatformConfig, al *allowlist.Allowlist, c *cache.Cache, f *fetcher.Fetcher, classifier nsfw.Classifier, log *slog.Logger) *BatchHandler {
+	return &BatchHandler{runner: newBatchRunner(cfg, al, c, f, classifier, log)}
 }
 
 func (h *BatchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -98,141 +114,228 @@ func (h *BatchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	log := h.log.With("batchSize", len(items))
+	log := h.runner.log.With("batchSize", len(items))
 	log.Info("batch.request.start")
 
+	response := h.runner.process(r.Context(), items, log)
+
+	log.Info("batch.request.complete", "count", len(items))
+	sendJSON(w, http.StatusOK, response)
+}
+
+// process runs the two-phase batch pipeline: fetch sources, then process.
+// NSFW predictions are cached per source URL and shared by all items that
+// requested them.
+func (r *batchRunner) process(ctx context.Context, items []batchRequestItem, log *slog.Logger) map[string]batchResponseItem {
 	response := make(map[string]batchResponseItem)
+	var responseMu sync.Mutex
+	setResponse := func(uuid string, item batchResponseItem) {
+		responseMu.Lock()
+		response[uuid] = item
+		responseMu.Unlock()
+	}
 
 	type pendingItem struct {
-		uuid    string
-		params  *params.Params
-		isVideo bool
+		uuid        string
+		params      *params.Params
+		isVideo     bool
+		cachedImage *cache.Entry
 	}
 	var pending []pendingItem
 
+	nsfwResults := make(map[string]*nsfw.Predictions)
+	nsfwErrs := make(map[string]error)
+
 	for _, item := range items {
 		query := buildQueryFromParams(item.Params)
-		p, err := params.Parse(item.URL, query, h.cfg, h.al)
+		p, err := params.Parse(item.URL, query, r.cfg, r.al)
 		if err != nil {
-			response[item.UUID] = batchResponseItem{Success: false, Error: err.Error()}
+			setResponse(item.UUID, batchResponseItem{Success: false, Error: err.Error()})
 			continue
 		}
 
 		isVideo := videoExtensions.MatchString(p.URL)
 
 		if p.Format == "json" {
-			data, err := h.handleBatchMetadata(p, isVideo, log)
+			data, err := r.handleMetadata(p, isVideo, log)
 			if err != nil {
-				response[item.UUID] = batchResponseItem{Success: false, Error: err.Error()}
+				setResponse(item.UUID, batchResponseItem{Success: false, Error: err.Error()})
 			} else {
-				response[item.UUID] = batchResponseItem{Success: true, Data: data}
+				setResponse(item.UUID, batchResponseItem{Success: true, Data: data})
 			}
 			continue
 		}
 
-		if h.cache != nil {
-			key := buildProcessedCacheKey(p)
-			if entry, found := h.cache.Get(key); found {
-				response[item.UUID] = batchResponseItem{
-					Success: true,
-					Data: map[string]string{
-						"base64":      base64.StdEncoding.EncodeToString(entry.Buffer),
-						"contentType": entry.ContentType,
-					},
-				}
-				continue
+		var cachedImage *cache.Entry
+		if r.cache != nil {
+			if entry, found := r.cache.Get(buildProcessedCacheKey(p)); found {
+				cachedImage = entry
 			}
 		}
 
-		pending = append(pending, pendingItem{uuid: item.UUID, params: p, isVideo: isVideo})
+		var preds *nsfw.Predictions
+		nsfwOK := false
+		if p.NSFWJS {
+			preds, nsfwOK = r.nsfw.Lookup(p.URL)
+			if nsfwOK {
+				nsfwResults[p.URL] = preds
+			}
+		}
+
+		if cachedImage != nil && (!p.NSFWJS || nsfwOK) {
+			var attached *nsfw.Predictions
+			if p.NSFWJS {
+				attached = preds
+			}
+			setResponse(item.UUID, batchResponseItem{
+				Success: true,
+				Data: imageData{
+					Base64:      base64.StdEncoding.EncodeToString(cachedImage.Buffer),
+					ContentType: cachedImage.ContentType,
+					NSFW:        attached,
+				},
+			})
+			continue
+		}
+
+		pending = append(pending, pendingItem{
+			uuid:        item.UUID,
+			params:      p,
+			isVideo:     isVideo,
+			cachedImage: cachedImage,
+		})
 	}
 
+	// ---- phase 1: fetch every source URL needed by pending items ----
 	type sourceEntry struct {
 		buffer      []byte
 		contentType string
+		err         error
 	}
+	sourceCache := make(map[string]*sourceEntry)
+	var sourceMu sync.Mutex
 
 	urlGroups := make(map[string][]int)
 	for i, item := range pending {
 		urlGroups[item.params.URL] = append(urlGroups[item.params.URL], i)
 	}
 
-	sourceCache := make(map[string]*sourceEntry)
-	var sourceMu sync.Mutex
-
-	var wg sync.WaitGroup
+	var fetchWg sync.WaitGroup
 	for url, indices := range urlGroups {
-		wg.Add(1)
+		fetchWg.Add(1)
 		go func(url string, indices []int) {
-			defer wg.Done()
-
+			defer fetchWg.Done()
 			isVideo := pending[indices[0]].isVideo
+			entry := &sourceEntry{}
 
-			if h.cache != nil {
-				sourceKey := cache.BuildCacheKey("source", url)
-				if entry, found := h.cache.Get(sourceKey); found {
-					sourceMu.Lock()
-					sourceCache[url] = &sourceEntry{buffer: entry.Buffer, contentType: entry.ContentType}
-					sourceMu.Unlock()
-					return
+			if r.cache != nil {
+				if cached, found := r.cache.Get(cache.BuildCacheKey("source", url)); found {
+					entry.buffer = cached.Buffer
+					entry.contentType = cached.ContentType
 				}
 			}
 
-			var buffer []byte
-			var contentType string
+			if entry.buffer == nil {
+				if isVideo {
+					frame, err := processor.ExtractVideoFrame(url, r.fetch, log)
+					if err != nil {
+						entry.err = err
+					} else {
+						entry.buffer = frame
+						entry.contentType = "image/jpeg"
+					}
+				} else {
+					result, err := r.fetch.FetchImage(url)
+					if err != nil {
+						entry.err = err
+					} else {
+						entry.buffer = result.Buffer
+						entry.contentType = result.ContentType
+					}
+				}
 
-			if isVideo {
-				frame, err := processor.ExtractVideoFrame(url, h.fetch, log)
-				if err != nil {
-					log.Warn("batch: video frame failed", "url", url, "error", err)
-					for _, idx := range indices {
-						pending[idx].params = nil
-					}
-					return
+				if entry.err == nil && r.cache != nil {
+					r.cache.Set(cache.BuildCacheKey("source", url), &cache.Entry{
+						Buffer:      entry.buffer,
+						ContentType: entry.contentType,
+					})
 				}
-				buffer = frame
-				contentType = "image/jpeg"
-			} else {
-				result, err := h.fetch.FetchImage(url)
-				if err != nil {
-					log.Warn("batch: fetch failed", "url", url, "error", err)
-					for _, idx := range indices {
-						pending[idx].params = nil
-					}
-					return
-				}
-				buffer = result.Buffer
-				contentType = result.ContentType
 			}
 
 			sourceMu.Lock()
-			sourceCache[url] = &sourceEntry{buffer: buffer, contentType: contentType}
+			sourceCache[url] = entry
 			sourceMu.Unlock()
-
-			if h.cache != nil {
-				sourceKey := cache.BuildCacheKey("source", url)
-				h.cache.Set(sourceKey, &cache.Entry{Buffer: buffer, ContentType: contentType})
-			}
 		}(url, indices)
 	}
-	wg.Wait()
+	fetchWg.Wait()
 
+	// ---- phase 1b: classify each URL at most once ----
+	classified := make(map[string]bool)
+	for _, item := range pending {
+		if !item.params.NSFWJS {
+			continue
+		}
+		url := item.params.URL
+		if classified[url] {
+			continue
+		}
+		classified[url] = true
+		if _, ok := nsfwResults[url]; ok {
+			continue
+		}
+
+		src := sourceCache[url]
+		if src == nil || src.err != nil || src.buffer == nil {
+			nsfwErrs[url] = errors.New("source unavailable")
+			continue
+		}
+
+		preds, err := r.nsfw.ClassifySource(ctx, url, src.buffer)
+		if err != nil {
+			nsfwErrs[url] = err
+			continue
+		}
+		nsfwResults[url] = preds
+	}
+
+	// ---- phase 2: process images ----
 	var processWg sync.WaitGroup
 	for _, item := range pending {
-		if item.params == nil {
-			response[item.uuid] = batchResponseItem{Success: false, Error: "Source fetch failed"}
-			continue
-		}
-
-		source, ok := sourceCache[item.params.URL]
-		if !ok {
-			response[item.uuid] = batchResponseItem{Success: false, Error: "Source unavailable"}
-			continue
-		}
-
+		item := item
 		processWg.Add(1)
-		go func(uuid string, p *params.Params, source *sourceEntry) {
+		go func() {
 			defer processWg.Done()
+
+			p := item.params
+			url := p.URL
+			src := sourceCache[url]
+			preds, hasPreds := nsfwResults[url]
+			nsfwErr := nsfwErrs[url]
+
+			if item.cachedImage != nil {
+				if nsfwErr != nil {
+					setResponse(item.uuid, batchResponseItem{Success: false, Error: nsfwItemError(nsfwErr)})
+					return
+				}
+				if !hasPreds || preds == nil {
+					setResponse(item.uuid, batchResponseItem{Success: false, Error: "nsfwjs: prediction unavailable"})
+					return
+				}
+				setResponse(item.uuid, batchResponseItem{
+					Success: true,
+					Data: imageData{
+						Base64:      base64.StdEncoding.EncodeToString(item.cachedImage.Buffer),
+						ContentType: item.cachedImage.ContentType,
+						NSFW:        preds,
+					},
+				})
+				return
+			}
+
+			if src == nil || src.err != nil || src.buffer == nil {
+				setResponse(item.uuid, batchResponseItem{Success: false, Error: "Source fetch failed"})
+				return
+			}
 
 			procParams := processor.ImageParams{
 				Width:             p.Width,
@@ -245,51 +348,76 @@ func (h *BatchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				Flip:              p.Flip,
 				Background:        p.Background,
 				MaxDimension:      p.MaxDimension,
-				SourceContentType: source.contentType,
+				SourceContentType: src.contentType,
 			}
 
-			result, err := processor.ProcessImage(source.buffer, procParams, log)
+			result, err := processor.ProcessImage(src.buffer, procParams, log)
+
+			var buffer []byte
+			var contentType string
 			if err != nil {
-				log.Warn("batch: process failed, returning original", "uuid", uuid, "error", err)
-				response[uuid] = batchResponseItem{
-					Success: true,
-					Data: map[string]string{
-						"base64":      base64.StdEncoding.EncodeToString(source.buffer),
-						"contentType": source.contentType,
-					},
+				log.Warn("batch: process failed, returning original", "uuid", item.uuid, "error", err)
+				buffer = src.buffer
+				contentType = src.contentType
+			} else {
+				contentType = processor.FormatContentTypes[result.Format]
+				if contentType == "" {
+					contentType = "application/octet-stream"
 				}
-				return
+				buffer = result.Buffer
+				if r.cache != nil {
+					r.cache.Set(buildProcessedCacheKey(p), &cache.Entry{
+						Buffer:      buffer,
+						ContentType: contentType,
+					})
+				}
 			}
 
-			outputContentType := processor.FormatContentTypes[result.Format]
-			if outputContentType == "" {
-				outputContentType = "application/octet-stream"
+			var attached *nsfw.Predictions
+			if p.NSFWJS {
+				if nsfwErr != nil {
+					setResponse(item.uuid, batchResponseItem{Success: false, Error: nsfwItemError(nsfwErr)})
+					return
+				}
+				if !hasPreds || preds == nil {
+					setResponse(item.uuid, batchResponseItem{Success: false, Error: "nsfwjs: prediction unavailable"})
+					return
+				}
+				attached = preds
 			}
 
-			if h.cache != nil {
-				key := buildProcessedCacheKey(p)
-				h.cache.Set(key, &cache.Entry{Buffer: result.Buffer, ContentType: outputContentType})
-			}
-
-			response[uuid] = batchResponseItem{
+			setResponse(item.uuid, batchResponseItem{
 				Success: true,
-				Data: map[string]string{
-					"base64":      base64.StdEncoding.EncodeToString(result.Buffer),
-					"contentType": outputContentType,
+				Data: imageData{
+					Base64:      base64.StdEncoding.EncodeToString(buffer),
+					ContentType: contentType,
+					NSFW:        attached,
 				},
-			}
-		}(item.uuid, item.params, source)
+			})
+		}()
 	}
 	processWg.Wait()
 
-	log.Info("batch.request.complete", "count", len(items))
-	sendJSON(w, http.StatusOK, response)
+	return response
 }
 
-func (h *BatchHandler) handleBatchMetadata(p *params.Params, isVideo bool, log *slog.Logger) (interface{}, error) {
-	if h.cache != nil {
+// nsfwItemError renders a classification error for a batch item, always with
+// the "nsfwjs:" prefix required by the API contract.
+func nsfwItemError(err error) string {
+	if errors.Is(err, ErrNSFWUnavailable) {
+		return "nsfwjs: classifier is not available"
+	}
+	msg := err.Error()
+	if strings.HasPrefix(msg, "nsfwjs:") {
+		return msg
+	}
+	return "nsfwjs: " + msg
+}
+
+func (r *batchRunner) handleMetadata(p *params.Params, isVideo bool, log *slog.Logger) (interface{}, error) {
+	if r.cache != nil {
 		key := cache.BuildCacheKey("meta", p.URL)
-		if entry, found := h.cache.Get(key); found {
+		if entry, found := r.cache.Get(key); found {
 			var data interface{}
 			json.Unmarshal(entry.Buffer, &data)
 			return data, nil
@@ -297,7 +425,7 @@ func (h *BatchHandler) handleBatchMetadata(p *params.Params, isVideo bool, log *
 	}
 
 	if isVideo {
-		meta, err := processor.ProbeVideoMetadata(p.URL, h.fetch, log)
+		meta, err := processor.ProbeVideoMetadata(p.URL, r.fetch, log)
 		if err != nil {
 			return nil, err
 		}
@@ -306,18 +434,18 @@ func (h *BatchHandler) handleBatchMetadata(p *params.Params, isVideo bool, log *
 			"codec": meta.Codec, "duration": meta.Duration,
 			"format": meta.Format, "sourceUrl": p.URL, "sourceSize": meta.SourceSize,
 		}
-		h.cacheMetadata(p.URL, data)
+		r.cacheMetadata(p.URL, data)
 		return data, nil
 	}
 
-	result, err := h.fetch.FetchImageRange(p.URL, fetcher.DefaultMetaRange)
+	result, err := r.fetch.FetchImageRange(p.URL, fetcher.DefaultMetaRange)
 	if err != nil {
 		return nil, err
 	}
 
 	meta, err := processor.ProbeImageMetadata(result.Buffer, log)
 	if err != nil {
-		fullResult, fullErr := h.fetch.FetchImage(p.URL)
+		fullResult, fullErr := r.fetch.FetchImage(p.URL)
 		if fullErr != nil {
 			return nil, fullErr
 		}
@@ -338,17 +466,17 @@ func (h *BatchHandler) handleBatchMetadata(p *params.Params, isVideo bool, log *
 		"sourceUrl": p.URL, "sourceContentType": meta.SourceContentType,
 		"sourceSize": meta.SourceSize,
 	}
-	h.cacheMetadata(p.URL, data)
+	r.cacheMetadata(p.URL, data)
 	return data, nil
 }
 
-func (h *BatchHandler) cacheMetadata(url string, data interface{}) {
-	if h.cache == nil {
+func (r *batchRunner) cacheMetadata(url string, data interface{}) {
+	if r.cache == nil {
 		return
 	}
 	jsonData, _ := json.Marshal(data)
 	key := cache.BuildCacheKey("meta", url)
-	h.cache.Set(key, &cache.Entry{Buffer: jsonData, ContentType: "application/json"})
+	r.cache.Set(key, &cache.Entry{Buffer: jsonData, ContentType: "application/json"})
 }
 
 func buildQueryFromParams(p map[string]interface{}) map[string][]string {

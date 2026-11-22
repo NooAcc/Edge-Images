@@ -13,6 +13,8 @@ import (
 	"edge-image/internal/config"
 	"edge-image/internal/fetcher"
 	"edge-image/internal/logger"
+	"edge-image/internal/nsfw"
+	"edge-image/internal/nsfw/onnx"
 	"edge-image/internal/processor"
 	"edge-image/internal/server"
 )
@@ -57,9 +59,33 @@ func main() {
 	al := allowlist.NewFromEnv()
 	f := fetcher.New(log)
 
-	imageHandler := server.NewHandler(cfg, al, c, f, log)
-	batchHandler := server.NewBatchHandler(cfg, al, c, f, log)
-	asyncBatchHandler := server.NewAsyncBatchHandler(cfg, al, c, f, log)
+	var classifier nsfw.Classifier
+	if cfg.NSFW.DisabledReason != "" {
+		log.Error("nsfw: disabled", "reason", cfg.NSFW.DisabledReason)
+	} else {
+		cl, err := onnx.New(onnx.Config{
+			ModelPath:   cfg.NSFW.ModelPath,
+			ORTLibPath:  cfg.NSFW.ORTLibPath,
+			Threshold:   cfg.NSFW.Threshold,
+			Concurrency: cfg.NSFW.Concurrency,
+		}, log)
+		if err != nil {
+			log.Error("nsfw: classifier init failed; nsfwjs requests will return 503", "error", err)
+		} else {
+			classifier = cl
+			// LIFO: Close runs before Shutdown, which releases the ORT environment.
+			defer onnx.Shutdown()
+			defer cl.Close()
+			log.Info("nsfw: classifier ready", "modelId", cl.ModelID(), "threshold", cl.Threshold())
+		}
+	}
+	if cfg.NSFW.ConcurrencyWarning {
+		log.Warn("nsfw: invalid NSFW_CONCURRENCY, using default", "concurrency", cfg.NSFW.Concurrency)
+	}
+
+	imageHandler := server.NewHandler(cfg, al, c, f, classifier, log)
+	batchHandler := server.NewBatchHandler(cfg, al, c, f, classifier, log)
+	asyncBatchHandler := server.NewAsyncBatchHandler(cfg, al, c, f, classifier, log)
 
 	mux := http.NewServeMux()
 

@@ -43,6 +43,7 @@ type Params struct {
 	Rotate        int
 	Flip          string
 	MaxDimension  int
+	NSFWJS        bool
 }
 
 func Parse(sourceURL string, query url.Values, cfg config.PlatformConfig, al *allowlist.Allowlist) (*Params, error) {
@@ -79,6 +80,14 @@ func Parse(sourceURL string, query url.Values, cfg config.PlatformConfig, al *al
 	rotate := parseRotation(query.Get("rotate"))
 	flip := parseFlip(query.Get("flip"))
 
+	nsfwjs, err := parseNSFWJS(query)
+	if err != nil {
+		return nil, err
+	}
+	if format == "json" && nsfwjs {
+		return nil, fmt.Errorf("nsfwjs is not supported with format=json")
+	}
+
 	return &Params{
 		URL:           parsedURL.String(),
 		Width:         width,
@@ -92,6 +101,7 @@ func Parse(sourceURL string, query url.Values, cfg config.PlatformConfig, al *al
 		Rotate:        rotate,
 		Flip:          flip,
 		MaxDimension:  maxDimension,
+		NSFWJS:        nsfwjs,
 	}, nil
 }
 
@@ -236,4 +246,22 @@ func parseFlip(raw string) string {
 		return v
 	}
 	return ""
+}
+
+// parseNSFWJS parses the optional nsfwjs flag. The parameter's presence means
+// it is enabled, so "?nsfwjs" and "?nsfwjs=" both turn classification on.
+func parseNSFWJS(query url.Values) (bool, error) {
+	if !query.Has("nsfwjs") {
+		return false, nil
+	}
+
+	v := strings.ToLower(strings.TrimSpace(query.Get("nsfwjs")))
+	switch v {
+	case "", "1", "true", "yes", "on":
+		return true, nil
+	case "0", "false", "no", "off":
+		return false, nil
+	default:
+		return false, fmt.Errorf("invalid nsfwjs value %q", v)
+	}
 }

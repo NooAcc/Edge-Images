@@ -422,6 +422,9 @@ func BuildCacheKey(keyType, url string, params ...string) string {
 	case "processed":
 		ps := strings.Join(params, "|")
 		return "processed:" + h + "_" + sha256Hex(ps)[:16]
+	case "nsfw":
+		ps := strings.Join(params, "|")
+		return "nsfw:" + h + "_" + sha256Hex(ps)[:16]
 	default:
 		return keyType + ":" + h
 	}

@@ -1,3 +1,7 @@
+FROM python:3.12-slim AS onnxruntime
+
+RUN pip install --no-cache-dir --target=/ort onnxruntime==1.31.0
+
 FROM golang:1.25-bookworm AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -22,6 +26,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libvips42 \
     ca-certificates \
     curl \
+    libgomp1 \
     $(if [ "$USE_SYSTEM_FFMPEG" = "true" ]; then echo "ffmpeg"; fi) \
     && rm -rf /var/lib/apt/lists/*
 
@@ -30,12 +35,18 @@ WORKDIR /app
 COPY --from=builder /app/edge-image /app/edge-image
 COPY public /app/public
 
+COPY --from=onnxruntime /ort/onnxruntime/capi/ /opt/onnxruntime/
+COPY models /app/models
+
 RUN mkdir -p /data
 
 ENV PORT=3000
 ENV PLATFORM=huggingface
 ENV PUBLIC_DIR=/app/public
 ENV GOMEMLIMIT=10GiB
+ENV ONNXRUNTIME_LIB_PATH=/opt/onnxruntime/libonnxruntime.so.1.31.0
+ENV LD_LIBRARY_PATH=/opt/onnxruntime
+ENV NSFW_MODEL_PATH=/app/models/nsfwjs_mobilenet_v2.onnx
 
 EXPOSE 3000
 

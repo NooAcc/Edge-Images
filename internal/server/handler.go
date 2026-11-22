@@ -2,16 +2,19 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"edge-image/internal/allowlist"
 	"edge-image/internal/cache"
 	"edge-image/internal/config"
 	"edge-image/internal/fetcher"
+	"edge-image/internal/nsfw"
 	"edge-image/internal/params"
 	"edge-image/internal/processor"
 )
@@ -29,11 +32,23 @@ type Handler struct {
 	al    *allowlist.Allowlist
 	cache *cache.Cache
 	fetch *fetcher.Fetcher
+	nsfw  *nsfwService
 	log   *slog.Logger
+
+	// processImage is a seam so tests can exercise the degraded-original path.
+	processImage func([]byte, processor.ImageParams, *slog.Logger) (*processor.ImageResult, error)
 }
 
-func NewHandler(cfg config.PlatformConfig, al *allowlist.Allowlist, c *cache.Cache, f *fetcher.Fetcher, log *slog.Logger) *Handler {
-	return &Handler{cfg: cfg, al: al, cache: c, fetch: f, log: log}
+func NewHandler(cfg config.PlatformConfig, al *allowlist.Allowlist, c *cache.Cache, f *fetcher.Fetcher, classifier nsfw.Classifier, log *slog.Logger) *Handler {
+	return &Handler{
+		cfg:          cfg,
+		al:           al,
+		cache:        c,
+		fetch:        f,
+		nsfw:         newNSFWService(classifier, c, log, cfg.NSFW.Concurrency),
+		log:          log,
+		processImage: processor.ProcessImage,
+	}
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -63,66 +78,74 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check processed cache
+	if p.NSFWJS && !h.nsfw.available() {
+		h.writeNSFWError(w, log, ErrNSFWUnavailable)
+		return
+	}
+
+	var cachedEntry *cache.Entry
 	if h.cache != nil {
 		key := buildProcessedCacheKey(p)
 		if entry, found := h.cache.Get(key); found {
-			w.Header().Set("Content-Type", entry.ContentType)
-			w.Header().Set("Cache-Control", cacheControl)
-			w.Header().Set("X-Processor", processorName)
-			w.Header().Set("X-Cache", "HIT")
-			w.Write(entry.Buffer)
-			return
+			cachedEntry = entry
 		}
 	}
 
-	var sourceBuffer []byte
-	var sourceContentType string
+	var preds *nsfw.Predictions
+	predsOK := false
+	if p.NSFWJS {
+		preds, predsOK = h.nsfw.Lookup(p.URL)
+	}
 
-	if isVideo {
-		frame, err := processor.ExtractVideoFrame(p.URL, h.fetch, log)
+	// Unchanged fast path: processed cache hit without nsfwjs.
+	if cachedEntry != nil && !p.NSFWJS {
+		w.Header().Set("Content-Type", cachedEntry.ContentType)
+		w.Header().Set("Cache-Control", cacheControl)
+		w.Header().Set("X-Processor", processorName)
+		w.Header().Set("X-Cache", "HIT")
+		w.Write(cachedEntry.Buffer)
+		return
+	}
+
+	// Processed image is cached but nsfwjs was requested.
+	if cachedEntry != nil {
+		meta, err := processor.ProbeImageMetadata(cachedEntry.Buffer, log)
 		if err != nil {
-			log.Warn("handler: video frame extraction failed", "error", err)
-			sendJSON(w, http.StatusBadGateway, map[string]string{
-				"error":   "Bad Gateway",
-				"details": sanitizeHeader(err.Error()),
-			})
+			h.writeNSFWError(w, log, fmt.Errorf("nsfwjs: probe cached image: %w", err))
 			return
 		}
-		sourceBuffer = frame
-		sourceContentType = "image/jpeg"
-	} else {
-		sourceCached := false
-		if h.cache != nil {
-			sourceKey := cache.BuildCacheKey("source", p.URL)
-			if entry, found := h.cache.Get(sourceKey); found {
-				sourceBuffer = entry.Buffer
-				sourceContentType = entry.ContentType
-				sourceCached = true
-			}
-		}
 
-		if !sourceCached {
-			result, err := h.fetch.FetchImage(p.URL)
+		if !predsOK {
+			source, _, err := h.fetchSource(p, isVideo, log)
 			if err != nil {
-				log.Warn("handler: fetch failed", "error", err)
-				sendJSON(w, http.StatusBadGateway, map[string]string{
-					"error":   "Bad Gateway",
-					"details": sanitizeHeader(err.Error()),
-				})
+				h.writeNSFWError(w, log, fmt.Errorf("nsfwjs: fetch source: %w", err))
 				return
 			}
-			sourceBuffer = result.Buffer
-			sourceContentType = result.ContentType
-
-			if h.cache != nil {
-				sourceKey := cache.BuildCacheKey("source", p.URL)
-				h.cache.Set(sourceKey, &cache.Entry{
-					Buffer:      sourceBuffer,
-					ContentType: sourceContentType,
-				})
+			preds, err = h.nsfw.ClassifySource(r.Context(), p.URL, source)
+			if err != nil {
+				h.writeNSFWError(w, log, err)
+				return
 			}
 		}
+
+		body, err := buildNSFWImageResponse(cachedEntry.Buffer, cachedEntry.ContentType,
+			meta.Format, meta.Width, meta.Height, preds)
+		if err != nil {
+			h.writeNSFWError(w, log, fmt.Errorf("nsfwjs: encode response: %w", err))
+			return
+		}
+		h.writeNSFWImage(w, body, meta.Width, meta.Height, meta.Format, len(cachedEntry.Buffer), true, "")
+		return
+	}
+
+	sourceBuffer, sourceContentType, err := h.fetchSource(p, isVideo, log)
+	if err != nil {
+		log.Warn("handler: fetch failed", "error", err)
+		sendJSON(w, http.StatusBadGateway, map[string]string{
+			"error":   "Bad Gateway",
+			"details": sanitizeHeader(err.Error()),
+		})
+		return
 	}
 
 	procParams := processor.ImageParams{
@@ -139,14 +162,40 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		SourceContentType: sourceContentType,
 	}
 
-	result, err := processor.ProcessImage(sourceBuffer, procParams, log)
+	result, err := h.processImage(sourceBuffer, procParams, log)
 	if err != nil {
 		log.Warn("handler: processing failed, returning original", "error", err)
-		w.Header().Set("Content-Type", sourceContentType)
-		w.Header().Set("Cache-Control", cacheControl)
-		w.Header().Set("X-Processor", processorName)
-		w.Header().Set("X-Processing-Error", sanitizeHeader(err.Error()))
-		w.Write(sourceBuffer)
+		procErr := err
+
+		if !p.NSFWJS {
+			w.Header().Set("Content-Type", sourceContentType)
+			w.Header().Set("Cache-Control", cacheControl)
+			w.Header().Set("X-Processor", processorName)
+			w.Header().Set("X-Processing-Error", sanitizeHeader(procErr.Error()))
+			w.Write(sourceBuffer)
+			return
+		}
+
+		if !predsOK {
+			var classifyErr error
+			preds, classifyErr = h.nsfw.ClassifySource(r.Context(), p.URL, sourceBuffer)
+			if classifyErr != nil {
+				h.writeNSFWError(w, log, classifyErr)
+				return
+			}
+		}
+		meta, metaErr := processor.ProbeImageMetadata(sourceBuffer, log)
+		if metaErr != nil {
+			h.writeNSFWError(w, log, fmt.Errorf("nsfwjs: probe original: %w", metaErr))
+			return
+		}
+		body, encodeErr := buildNSFWImageResponse(sourceBuffer, sourceContentType,
+			meta.Format, meta.Width, meta.Height, preds)
+		if encodeErr != nil {
+			h.writeNSFWError(w, log, fmt.Errorf("nsfwjs: encode response: %w", encodeErr))
+			return
+		}
+		h.writeNSFWImage(w, body, meta.Width, meta.Height, meta.Format, len(sourceBuffer), false, procErr.Error())
 		return
 	}
 
@@ -163,14 +212,100 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	w.Header().Set("Content-Type", outputContentType)
+	if !p.NSFWJS {
+		w.Header().Set("Content-Type", outputContentType)
+		w.Header().Set("Cache-Control", cacheControl)
+		w.Header().Set("X-Processor", processorName)
+		w.Header().Set("X-Image-Width", fmt.Sprintf("%d", result.Width))
+		w.Header().Set("X-Image-Height", fmt.Sprintf("%d", result.Height))
+		w.Header().Set("X-Image-Format", result.Format)
+		w.Header().Set("X-Image-Size", fmt.Sprintf("%d", result.Size))
+		w.Write(result.Buffer)
+		return
+	}
+
+	if !predsOK {
+		preds, err = h.nsfw.ClassifySource(r.Context(), p.URL, sourceBuffer)
+		if err != nil {
+			h.writeNSFWError(w, log, err)
+			return
+		}
+	}
+
+	body, err := buildNSFWImageResponse(result.Buffer, outputContentType,
+		result.Format, result.Width, result.Height, preds)
+	if err != nil {
+		h.writeNSFWError(w, log, fmt.Errorf("nsfwjs: encode response: %w", err))
+		return
+	}
+	h.writeNSFWImage(w, body, result.Width, result.Height, result.Format, len(result.Buffer), false, "")
+}
+
+// fetchSource returns the source bytes and content type, using the source
+// cache for images (videos always go through frame extraction).
+func (h *Handler) fetchSource(p *params.Params, isVideo bool, log *slog.Logger) ([]byte, string, error) {
+	if isVideo {
+		frame, err := processor.ExtractVideoFrame(p.URL, h.fetch, log)
+		if err != nil {
+			return nil, "", err
+		}
+		return frame, "image/jpeg", nil
+	}
+
+	if h.cache != nil {
+		sourceKey := cache.BuildCacheKey("source", p.URL)
+		if entry, found := h.cache.Get(sourceKey); found {
+			return entry.Buffer, entry.ContentType, nil
+		}
+	}
+
+	result, err := h.fetch.FetchImage(p.URL)
+	if err != nil {
+		return nil, "", err
+	}
+
+	if h.cache != nil {
+		sourceKey := cache.BuildCacheKey("source", p.URL)
+		h.cache.Set(sourceKey, &cache.Entry{
+			Buffer:      result.Buffer,
+			ContentType: result.ContentType,
+		})
+	}
+
+	return result.Buffer, result.ContentType, nil
+}
+
+func (h *Handler) writeNSFWImage(w http.ResponseWriter, body []byte, width, height int, format string, size int, cacheHit bool, processingErr string) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", cacheControl)
 	w.Header().Set("X-Processor", processorName)
-	w.Header().Set("X-Image-Width", fmt.Sprintf("%d", result.Width))
-	w.Header().Set("X-Image-Height", fmt.Sprintf("%d", result.Height))
-	w.Header().Set("X-Image-Format", result.Format)
-	w.Header().Set("X-Image-Size", fmt.Sprintf("%d", result.Size))
-	w.Write(result.Buffer)
+	w.Header().Set("X-Image-Width", strconv.Itoa(width))
+	w.Header().Set("X-Image-Height", strconv.Itoa(height))
+	w.Header().Set("X-Image-Format", format)
+	w.Header().Set("X-Image-Size", strconv.Itoa(size))
+	if cacheHit {
+		w.Header().Set("X-Cache", "HIT")
+	}
+	if processingErr != "" {
+		w.Header().Set("X-Processing-Error", sanitizeHeader(processingErr))
+	}
+	w.Write(body)
+}
+
+func (h *Handler) writeNSFWError(w http.ResponseWriter, log *slog.Logger, err error) {
+	if errors.Is(err, ErrNSFWUnavailable) {
+		sendJSON(w, http.StatusServiceUnavailable, map[string]string{
+			"error":   "Service Unavailable",
+			"details": "nsfwjs classifier is not available",
+		})
+		return
+	}
+
+	log.Warn("handler: nsfw classification failed", "error", err)
+	sendJSON(w, http.StatusBadGateway, map[string]string{
+		"error":   "Bad Gateway",
+		"details": sanitizeHeader(err.Error()),
+	})
 }
 
 func (h *Handler) handleMetadata(w http.ResponseWriter, p *params.Params, isVideo bool, log *slog.Logger) {

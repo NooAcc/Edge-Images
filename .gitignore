@@ -34,5 +34,8 @@ Thumbs.db
 # Environment
 .env
 
+# Superpowers workspace
+.superpowers/
+
 # Cache directory
 /data/
