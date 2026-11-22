@@ -84,6 +84,8 @@ Content-Type: application/json
 
 Accepts up to 20 items and returns processed results in the response body.
 
+Each item takes either `url` (http/https) or `base64` (inline image data, with an optional `contentType`; a data URI prefix is also accepted). Decoded base64 is limited to 50MB per image and 256MB per request.
+
 ### Async Batch Processing
 
 ```text

@@ -61,6 +61,20 @@ func Parse(sourceURL string, query url.Values, cfg config.PlatformConfig, al *al
 		return nil, fmt.Errorf("url host is not allowed by IMAGE_URL_ALLOWLIST")
 	}
 
+	return parseParams(parsedURL.String(), query, cfg)
+}
+
+// ParseInline parses params for an inline (base64) source. sourceKey identifies
+// the source for caching; it is not URL-validated or allowlist-checked.
+func ParseInline(sourceKey string, query url.Values, cfg config.PlatformConfig) (*Params, error) {
+	if sourceKey == "" {
+		return nil, fmt.Errorf("missing inline source key")
+	}
+
+	return parseParams(sourceKey, query, cfg)
+}
+
+func parseParams(source string, query url.Values, cfg config.PlatformConfig) (*Params, error) {
 	maxDimension := cfg.MaxDimension
 	if maxDimension == 0 {
 		maxDimension = 2048
@@ -89,7 +103,7 @@ func Parse(sourceURL string, query url.Values, cfg config.PlatformConfig, al *al
 	}
 
 	return &Params{
-		URL:           parsedURL.String(),
+		URL:           source,
 		Width:         width,
 		Height:        height,
 		Crop:          crop,

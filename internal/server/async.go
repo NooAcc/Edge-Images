@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"time"
@@ -34,10 +33,12 @@ type callbackPayload struct {
 }
 
 // callbackItem records the original request item so the receiver can map results back.
+// Inline base64 payloads are intentionally not echoed.
 type callbackItem struct {
-	UUID   string                 `json:"uuid"`
-	URL    string                 `json:"url"`
-	Params map[string]interface{} `json:"params"`
+	UUID        string                 `json:"uuid"`
+	URL         string                 `json:"url"`
+	ContentType string                 `json:"contentType,omitempty"`
+	Params      map[string]interface{} `json:"params"`
 }
 
 // AsyncBatchHandler processes batches asynchronously and POSTs results to a callback URL.
@@ -56,9 +57,8 @@ func (h *AsyncBatchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		sendJSON(w, http.StatusBadRequest, map[string]string{"error": "Failed to read request body"})
+	body, ok := readBatchBody(w, r)
+	if !ok {
 		return
 	}
 
@@ -96,21 +96,9 @@ func (h *AsyncBatchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate items
-	uuids := make(map[string]bool)
-	for _, item := range req.Items {
-		if item.UUID == "" {
-			sendJSON(w, http.StatusBadRequest, map[string]string{"error": "Each image must have a string uuid"})
-			return
-		}
-		if uuids[item.UUID] {
-			sendJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("Duplicate uuid: %s", item.UUID)})
-			return
-		}
-		uuids[item.UUID] = true
-		if item.URL == "" {
-			sendJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("Missing url for uuid: %s", item.UUID)})
-			return
-		}
+	if msg := validateBatchItems(req.Items); msg != "" {
+		sendJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
+		return
 	}
 
 	log := h.runner.log.With("jobId", jobID, "batchSize", len(req.Items), "callbackUrl", req.CallbackURL)
@@ -139,9 +127,10 @@ func (h *AsyncBatchHandler) processAsync(jobID string, items []batchRequestItem,
 	callbackItems := make([]callbackItem, len(items))
 	for i, item := range items {
 		callbackItems[i] = callbackItem{
-			UUID:   item.UUID,
-			URL:    item.URL,
-			Params: item.Params,
+			UUID:        item.UUID,
+			URL:         item.URL,
+			ContentType: item.ContentType,
+			Params:      item.Params,
 		}
 	}
 

@@ -83,6 +83,26 @@ func nsfwParams() map[string]interface{} {
 	return map[string]interface{}{"format": "png", "nsfwjs": "true"}
 }
 
+// post sends the items and returns the raw recorder so tests can assert on
+// non-200 responses.
+func (e *batchEnv) post(t *testing.T, items []batchRequestItem) *httptest.ResponseRecorder {
+	t.Helper()
+	body, err := json.Marshal(items)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/batch", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	e.handler.ServeHTTP(rec, req)
+	return rec
+}
+
+func encodedPNG(t *testing.T) string {
+	t.Helper()
+	return base64.StdEncoding.EncodeToString(pngBytes(t, 4, 4))
+}
+
 func TestBatchNSFWData(t *testing.T) {
 	fake := &fakeClassifier{preds: testPreds()}
 	env := newBatchEnv(t, fake)
@@ -240,5 +260,201 @@ func TestBatchNSFWClassifierUnavailableSkipsSource(t *testing.T) {
 	}
 	if env.hits.Load() != 1 {
 		t.Fatalf("source fetches = %d, want 1 (nsfw item must not fetch)", env.hits.Load())
+	}
+}
+
+func TestBatchBase64Source(t *testing.T) {
+	env := newBatchEnv(t, nil)
+
+	resp := env.do(t, []batchRequestItem{
+		{UUID: "a", Base64: encodedPNG(t), ContentType: "image/png", Params: map[string]interface{}{"format": "png"}},
+	})
+
+	item := resp["a"]
+	if !item.Success {
+		t.Fatalf("a failed: %s", item.Error)
+	}
+
+	var data imageData
+	if err := json.Unmarshal(item.Data, &data); err != nil {
+		t.Fatal(err)
+	}
+	if data.ContentType != "image/png" {
+		t.Fatalf("contentType = %q, want image/png", data.ContentType)
+	}
+	out, err := base64.StdEncoding.DecodeString(data.Base64)
+	if err != nil {
+		t.Fatalf("base64: %v", err)
+	}
+	if len(out) == 0 {
+		t.Fatal("empty output")
+	}
+	if env.hits.Load() != 0 {
+		t.Fatalf("source fetches = %d, want 0", env.hits.Load())
+	}
+}
+
+func TestBatchBase64BypassesAllowlist(t *testing.T) {
+	t.Setenv("IMAGE_URL_ALLOWLIST", "allowed.example")
+
+	c, err := cache.New(0, 1, t.TempDir(), testLogger())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.Close)
+
+	h := NewBatchHandler(testConfig(), allowlist.NewFromEnv(), c, fetcher.New(testLogger()), nil, testLogger())
+	env := &batchEnv{handler: h, cache: c, hits: &atomic.Int64{}}
+
+	resp := env.do(t, []batchRequestItem{
+		{UUID: "a", Base64: encodedPNG(t), Params: map[string]interface{}{"format": "png"}},
+	})
+
+	if !resp["a"].Success {
+		t.Fatalf("a failed: %s", resp["a"].Error)
+	}
+}
+
+func TestBatchBase64InfersContentTypeForMetadata(t *testing.T) {
+	env := newBatchEnv(t, nil)
+	payload := pngBytes(t, 4, 4)
+
+	resp := env.do(t, []batchRequestItem{
+		{UUID: "a", Base64: base64.StdEncoding.EncodeToString(payload), Params: map[string]interface{}{"format": "json"}},
+	})
+
+	item := resp["a"]
+	if !item.Success {
+		t.Fatalf("a failed: %s", item.Error)
+	}
+
+	var data map[string]interface{}
+	if err := json.Unmarshal(item.Data, &data); err != nil {
+		t.Fatal(err)
+	}
+	if data["sourceContentType"] != "image/png" {
+		t.Fatalf("sourceContentType = %v, want image/png", data["sourceContentType"])
+	}
+	if data["sourceUrl"] != "inline" {
+		t.Fatalf("sourceUrl = %v, want inline", data["sourceUrl"])
+	}
+	if data["sourceSize"].(float64) != float64(len(payload)) {
+		t.Fatalf("sourceSize = %v, want %d", data["sourceSize"], len(payload))
+	}
+	if data["width"].(float64) != 4 || data["height"].(float64) != 4 {
+		t.Fatalf("dimensions = %vx%v, want 4x4", data["width"], data["height"])
+	}
+	if env.hits.Load() != 0 {
+		t.Fatalf("source fetches = %d, want 0", env.hits.Load())
+	}
+}
+
+func TestBatchBase64AcceptsDataURIPrefix(t *testing.T) {
+	env := newBatchEnv(t, nil)
+	payload := pngBytes(t, 4, 4)
+	encoded := "data:image/png;base64," + base64.StdEncoding.EncodeToString(payload)
+
+	resp := env.do(t, []batchRequestItem{
+		{UUID: "a", Base64: encoded, Params: map[string]interface{}{"format": "json"}},
+	})
+
+	item := resp["a"]
+	if !item.Success {
+		t.Fatalf("a failed: %s", item.Error)
+	}
+
+	var data map[string]interface{}
+	if err := json.Unmarshal(item.Data, &data); err != nil {
+		t.Fatal(err)
+	}
+	if data["sourceContentType"] != "image/png" {
+		t.Fatalf("sourceContentType = %v, want image/png", data["sourceContentType"])
+	}
+}
+
+func TestBatchRejectsURLAndBase64Together(t *testing.T) {
+	env := newBatchEnv(t, nil)
+
+	rec := env.post(t, []batchRequestItem{
+		{UUID: "a", URL: env.sourceURL, Base64: encodedPNG(t)},
+	})
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body = %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "not both") {
+		t.Fatalf("body = %s, want mention of mutual exclusion", rec.Body.String())
+	}
+	if env.hits.Load() != 0 {
+		t.Fatalf("source fetches = %d, want 0", env.hits.Load())
+	}
+}
+
+func TestBatchRejectsMissingSource(t *testing.T) {
+	env := newBatchEnv(t, nil)
+
+	rec := env.post(t, []batchRequestItem{{UUID: "a"}})
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body = %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "url or base64") {
+		t.Fatalf("body = %s, want mention of url or base64", rec.Body.String())
+	}
+}
+
+func TestBatchRejectsInvalidBase64(t *testing.T) {
+	env := newBatchEnv(t, nil)
+
+	resp := env.do(t, []batchRequestItem{
+		{UUID: "a", Base64: "not*valid*base64", Params: map[string]interface{}{"format": "png"}},
+	})
+
+	if resp["a"].Success {
+		t.Fatal("item with invalid base64 should fail")
+	}
+	if !strings.Contains(strings.ToLower(resp["a"].Error), "base64") {
+		t.Fatalf("error = %q, want mention of base64", resp["a"].Error)
+	}
+	if env.hits.Load() != 0 {
+		t.Fatalf("source fetches = %d, want 0", env.hits.Load())
+	}
+}
+
+func TestBatchBase64SharedContentClassifiedOnce(t *testing.T) {
+	fake := &fakeClassifier{preds: testPreds()}
+	env := newBatchEnv(t, fake)
+	encoded := encodedPNG(t)
+
+	resp := env.do(t, []batchRequestItem{
+		{UUID: "a", Base64: encoded, Params: nsfwParams()},
+		{UUID: "b", Base64: encoded, Params: nsfwParams()},
+	})
+
+	if !resp["a"].Success || !resp["b"].Success {
+		t.Fatalf("resp = %+v", resp)
+	}
+	if fake.Calls() != 1 {
+		t.Fatalf("classifier calls = %d, want 1", fake.Calls())
+	}
+	if env.hits.Load() != 0 {
+		t.Fatalf("source fetches = %d, want 0", env.hits.Load())
+	}
+
+	var data imageData
+	if err := json.Unmarshal(resp["a"].Data, &data); err != nil {
+		t.Fatal(err)
+	}
+	if data.NSFW == nil {
+		t.Fatal("missing nsfw")
+	}
+}
+
+func TestDecodeInlineSourceRejectsOversized(t *testing.T) {
+	encoded := base64.StdEncoding.EncodeToString(make([]byte, 16))
+
+	_, _, err := decodeInlineSource(encoded, "", 8)
+	if err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("err = %v, want size limit error", err)
 	}
 }

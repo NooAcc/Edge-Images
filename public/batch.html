@@ -60,6 +60,11 @@
     {"uuid":"img-001","url":"https://example.com/a.jpg","params":{"width":200,"height":200}},
     {"uuid":"img-002","url":"https://example.com/b.png","params":{"format":"json"}}
   ]'</pre>
+        <p style="margin-top: 8px">
+          每条 item 的 <code>url</code> 与 <code>base64</code> 二选一。内联图片示例：
+          <code>{"uuid":"img-003","base64":"iVBORw0KGgo...","contentType":"image/png","params":{"width":200}}</code>。
+          单次请求体上限 256MB。
+        </p>
       </section>
 
       <section aria-labelledby="headers-title">
@@ -104,8 +109,20 @@
             <tr>
               <td><code>url</code></td>
               <td>string</td>
-              <td>是</td>
-              <td>图片地址（http/https）</td>
+              <td>二选一</td>
+              <td>图片地址（http/https）；与 <code>base64</code> 互斥</td>
+            </tr>
+            <tr>
+              <td><code>base64</code></td>
+              <td>string</td>
+              <td>二选一</td>
+              <td>内联图片的 base64 数据，可带 <code>data:image/png;base64,</code> 前缀；解码后单张上限 50MB；与 <code>url</code> 互斥</td>
+            </tr>
+            <tr>
+              <td><code>contentType</code></td>
+              <td>string</td>
+              <td>否</td>
+              <td>仅 <code>base64</code> 使用；缺省时自动从图片字节推断</td>
             </tr>
             <tr>
               <td><code>params</code></td>
@@ -138,6 +155,12 @@ Content-Type: application/json
     "uuid": "meta-001",
     "url": "https://example.com/banner.jpg",
     "params": { "format": "json" }
+  },
+  {
+    "uuid": "inline-001",
+    "base64": "iVBORw0KGgo...",
+    "contentType": "image/png",
+    "params": { "width": 100, "format": "webp" }
   }
 ]</div>
       </section>
@@ -326,7 +349,7 @@ Content-Type: application/json; charset=utf-8
             <tr>
               <td><code>items</code></td>
               <td>array</td>
-              <td>原始请求项列表（uuid、url、params）</td>
+              <td>原始请求项列表（uuid、url、contentType、params）；内联图片不回显 base64</td>
             </tr>
             <tr>
               <td><code>results</code></td>

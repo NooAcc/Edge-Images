@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,11 +25,15 @@ import (
 
 const maxBatchImages = 20
 const maxAsyncBatchImages = 50
+const maxInlineImageBytes = 50 << 20
+const maxRequestBodyBytes = 256 << 20
 
 type batchRequestItem struct {
-	UUID   string                 `json:"uuid"`
-	URL    string                 `json:"url"`
-	Params map[string]interface{} `json:"params"`
+	UUID        string                 `json:"uuid"`
+	URL         string                 `json:"url"`
+	Base64      string                 `json:"base64"`
+	ContentType string                 `json:"contentType"`
+	Params      map[string]interface{} `json:"params"`
 }
 
 type batchResponseItem struct {
@@ -73,9 +79,8 @@ func (h *BatchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		sendJSON(w, http.StatusBadRequest, map[string]string{"error": "Failed to read request body"})
+	body, ok := readBatchBody(w, r)
+	if !ok {
 		return
 	}
 
@@ -97,21 +102,9 @@ func (h *BatchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	uuids := make(map[string]bool)
-	for _, item := range items {
-		if item.UUID == "" {
-			sendJSON(w, http.StatusBadRequest, map[string]string{"error": "Each image must have a string uuid"})
-			return
-		}
-		if uuids[item.UUID] {
-			sendJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("Duplicate uuid: %s", item.UUID)})
-			return
-		}
-		uuids[item.UUID] = true
-		if item.URL == "" {
-			sendJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("Missing url for uuid: %s", item.UUID)})
-			return
-		}
+	if msg := validateBatchItems(items); msg != "" {
+		sendJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
+		return
 	}
 
 	log := h.runner.log.With("batchSize", len(items))
@@ -121,6 +114,89 @@ func (h *BatchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	log.Info("batch.request.complete", "count", len(items))
 	sendJSON(w, http.StatusOK, response)
+}
+
+// readBatchBody reads the request body with a sanity limit so a large inline
+// base64 batch cannot exhaust memory in one request.
+func readBatchBody(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			sendJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "Request body too large"})
+		} else {
+			sendJSON(w, http.StatusBadRequest, map[string]string{"error": "Failed to read request body"})
+		}
+		return nil, false
+	}
+	return body, true
+}
+
+// validateBatchItems checks the fields shared by the sync and async endpoints.
+// It returns an empty string when every item is valid.
+func validateBatchItems(items []batchRequestItem) string {
+	uuids := make(map[string]bool)
+	for _, item := range items {
+		if item.UUID == "" {
+			return "Each image must have a string uuid"
+		}
+		if uuids[item.UUID] {
+			return fmt.Sprintf("Duplicate uuid: %s", item.UUID)
+		}
+		uuids[item.UUID] = true
+		if item.URL == "" && item.Base64 == "" {
+			return fmt.Sprintf("Missing url or base64 for uuid: %s", item.UUID)
+		}
+		if item.URL != "" && item.Base64 != "" {
+			return fmt.Sprintf("Provide either url or base64, not both for uuid: %s", item.UUID)
+		}
+	}
+	return ""
+}
+
+// decodeInlineSource decodes a base64 image, accepting an optional data URI
+// prefix, and resolves its content type. maxBytes bounds the decoded size.
+func decodeInlineSource(encoded, contentType string, maxBytes int) ([]byte, string, error) {
+	if strings.HasPrefix(encoded, "data:") {
+		comma := strings.IndexByte(encoded, ',')
+		if comma < 0 {
+			return nil, "", errors.New("base64 data URI is malformed")
+		}
+		meta := encoded[:comma]
+		if !strings.HasSuffix(meta, ";base64") {
+			return nil, "", errors.New("base64 data URI must be base64-encoded")
+		}
+		if contentType == "" {
+			contentType = strings.TrimSuffix(strings.TrimPrefix(meta, "data:"), ";base64")
+		}
+		encoded = encoded[comma+1:]
+	}
+
+	if encoded == "" {
+		return nil, "", errors.New("base64 image is empty")
+	}
+	if len(encoded) > base64.StdEncoding.EncodedLen(maxBytes) {
+		return nil, "", fmt.Errorf("base64 image exceeds %d MB limit", maxBytes>>20)
+	}
+	buf, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return nil, "", fmt.Errorf("invalid base64: %w", err)
+	}
+	if len(buf) > maxBytes {
+		return nil, "", fmt.Errorf("base64 image exceeds %d MB limit", maxBytes>>20)
+	}
+	if contentType == "" {
+		contentType = http.DetectContentType(buf)
+	}
+	return buf, contentType, nil
+}
+
+// inlineSourceKey gives inline bytes a stable cache identity that cannot
+// collide with a real URL.
+func inlineSourceKey(buf []byte) string {
+	sum := sha256.Sum256(buf)
+	return "inline:" + hex.EncodeToString(sum[:])
 }
 
 // process runs the two-phase batch pipeline: fetch sources, then process.
@@ -136,10 +212,13 @@ func (r *batchRunner) process(ctx context.Context, items []batchRequestItem, log
 	}
 
 	type pendingItem struct {
-		uuid        string
-		params      *params.Params
-		isVideo     bool
-		cachedImage *cache.Entry
+		uuid              string
+		params            *params.Params
+		isVideo           bool
+		cachedImage       *cache.Entry
+		inline            bool
+		inlineBuffer      []byte
+		inlineContentType string
 	}
 	var pending []pendingItem
 
@@ -148,16 +227,38 @@ func (r *batchRunner) process(ctx context.Context, items []batchRequestItem, log
 
 	for _, item := range items {
 		query := buildQueryFromParams(item.Params)
-		p, err := params.Parse(item.URL, query, r.cfg, r.al)
+
+		var (
+			p         *params.Params
+			err       error
+			inlineBuf []byte
+			inlineCT  string
+		)
+		if item.Base64 != "" {
+			inlineBuf, inlineCT, err = decodeInlineSource(item.Base64, item.ContentType, maxInlineImageBytes)
+			if err != nil {
+				setResponse(item.UUID, batchResponseItem{Success: false, Error: err.Error()})
+				continue
+			}
+			p, err = params.ParseInline(inlineSourceKey(inlineBuf), query, r.cfg)
+		} else {
+			p, err = params.Parse(item.URL, query, r.cfg, r.al)
+		}
 		if err != nil {
 			setResponse(item.UUID, batchResponseItem{Success: false, Error: err.Error()})
 			continue
 		}
 
-		isVideo := videoExtensions.MatchString(p.URL)
+		isInline := item.Base64 != ""
+		isVideo := !isInline && videoExtensions.MatchString(p.URL)
 
 		if p.Format == "json" {
-			data, err := r.handleMetadata(p, isVideo, log)
+			var data interface{}
+			if isInline {
+				data, err = r.handleInlineMetadata(p, inlineBuf, inlineCT, log)
+			} else {
+				data, err = r.handleMetadata(p, isVideo, log)
+			}
 			if err != nil {
 				setResponse(item.UUID, batchResponseItem{Success: false, Error: err.Error()})
 			} else {
@@ -209,10 +310,13 @@ func (r *batchRunner) process(ctx context.Context, items []batchRequestItem, log
 		}
 
 		pending = append(pending, pendingItem{
-			uuid:        item.UUID,
-			params:      p,
-			isVideo:     isVideo,
-			cachedImage: cachedImage,
+			uuid:              item.UUID,
+			params:            p,
+			isVideo:           isVideo,
+			cachedImage:       cachedImage,
+			inline:            isInline,
+			inlineBuffer:      inlineBuf,
+			inlineContentType: inlineCT,
 		})
 	}
 
@@ -225,8 +329,21 @@ func (r *batchRunner) process(ctx context.Context, items []batchRequestItem, log
 	sourceCache := make(map[string]*sourceEntry)
 	var sourceMu sync.Mutex
 
+	// Inline sources need no download; seed the cache so phase 2 finds them.
+	for _, item := range pending {
+		if item.inline {
+			sourceCache[item.params.URL] = &sourceEntry{
+				buffer:      item.inlineBuffer,
+				contentType: item.inlineContentType,
+			}
+		}
+	}
+
 	urlGroups := make(map[string][]int)
 	for i, item := range pending {
+		if item.inline {
+			continue
+		}
 		urlGroups[item.params.URL] = append(urlGroups[item.params.URL], i)
 	}
 
@@ -474,6 +591,35 @@ func (r *batchRunner) handleMetadata(p *params.Params, isVideo bool, log *slog.L
 		"width": meta.Width, "height": meta.Height,
 		"format": meta.Format, "channels": meta.Channels,
 		"sourceUrl": p.URL, "sourceContentType": meta.SourceContentType,
+		"sourceSize": meta.SourceSize,
+	}
+	r.cacheMetadata(p.URL, data)
+	return data, nil
+}
+
+// handleInlineMetadata probes metadata directly from an inline source buffer
+// instead of fetching it.
+func (r *batchRunner) handleInlineMetadata(p *params.Params, buffer []byte, contentType string, log *slog.Logger) (interface{}, error) {
+	if r.cache != nil {
+		key := cache.BuildCacheKey("meta", p.URL)
+		if entry, found := r.cache.Get(key); found {
+			var data interface{}
+			json.Unmarshal(entry.Buffer, &data)
+			return data, nil
+		}
+	}
+
+	meta, err := processor.ProbeImageMetadata(buffer, log)
+	if err != nil {
+		return nil, err
+	}
+	meta.SourceSize = int64(len(buffer))
+	meta.SourceContentType = contentType
+
+	data := map[string]interface{}{
+		"width": meta.Width, "height": meta.Height,
+		"format": meta.Format, "channels": meta.Channels,
+		"sourceUrl": "inline", "sourceContentType": meta.SourceContentType,
 		"sourceSize": meta.SourceSize,
 	}
 	r.cacheMetadata(p.URL, data)

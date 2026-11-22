@@ -75,6 +75,39 @@ func TestParseNSFWJSONConflict(t *testing.T) {
 	}
 }
 
+func TestParseInlineSkipsURLValidation(t *testing.T) {
+	query, _ := url.ParseQuery("width=100&format=png&nsfwjs=on")
+	p, err := ParseInline("inline:abc123", query, config.PlatformConfig{MaxDimension: 2048, DefaultQuality: 90})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.URL != "inline:abc123" {
+		t.Fatalf("URL = %q, want inline:abc123", p.URL)
+	}
+	if p.Width != 100 {
+		t.Fatalf("width = %d, want 100", p.Width)
+	}
+	if p.Format != "png" {
+		t.Fatalf("format = %q, want png", p.Format)
+	}
+	if !p.NSFWJS {
+		t.Fatal("NSFWJS = false, want true")
+	}
+}
+
+func TestParseInlineRejectsEmptySourceKey(t *testing.T) {
+	if _, err := ParseInline("", url.Values{}, config.PlatformConfig{}); err == nil {
+		t.Fatal("expected error for empty source key")
+	}
+}
+
+func TestParseInlineRejectsNSFWWithJSON(t *testing.T) {
+	query, _ := url.ParseQuery("format=json&nsfwjs=1")
+	if _, err := ParseInline("inline:abc123", query, config.PlatformConfig{}); err == nil {
+		t.Fatal("expected error for format=json with nsfwjs enabled")
+	}
+}
+
 func TestParseSetsNSFWJS(t *testing.T) {
 	t.Setenv("IMAGE_URL_ALLOWLIST", "")
 

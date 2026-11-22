@@ -76,6 +76,21 @@ Content-Type: application/json
 
 异步模式接受更大的批次（最多 50 张），服务端返回 `202 Accepted` 后在后台处理，完成后通过 `callbackUrl` POST 回调结果。
 
+同步与异步批量的每个 item 共用同一套来源字段，`url` 与 `base64` 二选一：
+
+- `url`：http/https 图片地址。
+- `base64`：内联图片数据，可带 `data:image/png;base64,` 前缀；解码后单张上限 50MB。
+- `contentType`：可选，仅用于 `base64`；缺省时从图片字节自动推断。
+- 单次请求体上限 256MB（包含所有 item 的 base64 数据）。
+
+内联图片示例：
+
+```json
+[
+  { "uuid": "img-1", "base64": "iVBORw0KGgo...", "contentType": "image/png", "params": { "width": 800, "format": "webp" } }
+]
+```
+
 请求体示例：
 
 ```json
