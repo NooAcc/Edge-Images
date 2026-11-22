@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NSFW 识别对比</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%236ea8fe'/%3E%3Ccircle cx='16' cy='16' r='7' fill='%230f1115'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true"></span>
+      <div class="brand-text">
+        <h1>NSFW 识别对比</h1>
+        <p>nsfw_detection_2_mini（本地） <span class="vs">vs</span> clef-flash（Cloudflare）</p>
+      </div>
+    </div>
+    <div class="controls">
+      <label class="threshold" for="threshold">
+        <span>判定阈值</span>
+        <input type="range" id="threshold" min="0.05" max="0.95" step="0.05" value="0.5">
+        <output id="thresholdValue" for="threshold">0.50</output>
+      </label>
+      <button type="button" class="btn ghost" id="settingsBtn">
+        <span class="gear" aria-hidden="true">⚙</span> 设置
+        <span class="cred-dot" id="credDot" title="Cloudflare 凭证状态"></span>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <section class="empty" id="emptyState">
+      <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="选择图片">
+        <div class="dropzone-icon" aria-hidden="true">＋</div>
+        <h2>拖入图片，或点击选择</h2>
+        <p>一次可以选多张，页面会一张一张显示。也支持 <kbd>Ctrl</kbd> + <kbd>V</kbd> 粘贴剪贴板图片。</p>
+        <input type="file" id="fileInput" accept="image/*" multiple hidden>
+      </div>
+      <p class="privacy">本地模型在本机推理；配置 Cloudflare 后，图片会上传至 Cloudflare Workers AI 进行识别。</p>
+    </section>
+
+    <section class="viewer hidden" id="viewer">
+      <div class="stage">
+        <div class="image-wrap" id="imageWrap">
+          <img id="preview" alt="待识别图片">
+          <div class="stage-loading hidden" id="stageLoading"><span class="spinner"></span> 识别中…</div>
+        </div>
+        <div class="nav-row">
+          <button type="button" class="btn icon" id="prevBtn" title="上一张（←）" aria-label="上一张">←</button>
+          <span class="position" id="position">1 / 1</span>
+          <button type="button" class="btn icon" id="nextBtn" title="下一张（→）" aria-label="下一张">→</button>
+          <span class="spacer"></span>
+          <span class="image-info" id="imageInfo"></span>
+          <span class="badge mismatch hidden" id="mismatchBadge"></span>
+          <button type="button" class="btn ghost small" id="rerunBtn" title="用当前设置重新识别">↻ 重跑</button>
+        </div>
+        <p class="image-note hidden" id="imageNote"></p>
+        <p class="stage-error hidden" id="stageError"></p>
+      </div>
+
+      <div class="cards">
+        <article class="card" id="localCard">
+          <header class="card-head">
+            <div>
+              <h2>nsfw_detection_2_mini</h2>
+              <p>本地 ONNX · EfficientNet-B4 · 380×380</p>
+            </div>
+            <span class="verdict idle" id="localVerdict">等待中</span>
+          </header>
+          <div class="card-body" id="localBody"></div>
+        </article>
+
+        <article class="card" id="cloudCard">
+          <header class="card-head">
+            <div>
+              <h2>clef-flash</h2>
+              <p>Cloudflare Workers AI · 视觉决策模型</p>
+            </div>
+            <span class="verdict idle" id="cloudVerdict">等待中</span>
+          </header>
+          <div class="card-body" id="cloudBody"></div>
+        </article>
+      </div>
+    </section>
+
+    <div class="filmstrip-wrap hidden" id="filmstripWrap">
+      <div class="filmstrip-head">
+        <span id="filmstripCount">0 张</span>
+        <button type="button" class="btn link" id="clearBtn">清空</button>
+      </div>
+      <div class="filmstrip" id="filmstrip"></div>
+    </div>
+  </main>
+
+  <div class="drop-overlay hidden" id="dropOverlay"><div>松开以添加图片</div></div>
+
+  <dialog id="settingsDialog">
+    <form method="dialog" id="settingsForm" class="settings">
+      <header>
+        <h2>Cloudflare 设置</h2>
+        <p>凭证只保存在这个浏览器里，随请求发送到本地工具服务，不会写入文件或日志。</p>
+      </header>
+
+      <label class="field">
+        <span>Account ID</span>
+        <input type="text" id="accountIdInput" autocomplete="off" spellcheck="false" placeholder="32 位十六进制 Account ID">
+      </label>
+
+      <label class="field">
+        <span>API Token</span>
+        <span class="token-wrap">
+          <input type="password" id="tokenInput" autocomplete="off" spellcheck="false" placeholder="cfut_...">
+          <button type="button" class="btn icon" id="toggleToken" aria-label="显示 token">👁</button>
+        </span>
+      </label>
+
+      <label class="check">
+        <input type="checkbox" id="rememberInput" checked>
+        <span>在这台浏览器上记住（否则只保留到本次会话结束）</span>
+      </label>
+
+      <p class="settings-status" id="settingsStatus"></p>
+
+      <footer>
+        <button type="button" class="btn ghost" id="testBtn">测试连接</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn ghost" id="cancelSettings">取消</button>
+        <button type="button" class="btn primary" id="saveSettings">保存</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <div class="toast hidden" id="toast"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

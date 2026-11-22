@@ -33,6 +33,7 @@ Thumbs.db
 
 # Environment
 .env
+4test.txt
 
 # Superpowers workspace
 .superpowers/
