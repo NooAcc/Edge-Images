@@ -83,7 +83,7 @@ func (s *nsfwService) ClassifySource(ctx context.Context, url string, source []b
 	case s.sem <- struct{}{}:
 		defer func() { <-s.sem }()
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return nil, fmt.Errorf("nsfwjs: %w", ctx.Err())
 	}
 
 	rgb, width, height, err := processor.PrepareNSFWInput(source)
@@ -94,6 +94,10 @@ func (s *nsfwService) ClassifySource(ctx context.Context, url string, source []b
 	preds, err := s.classifier.Classify(ctx, rgb, width, height)
 	if err != nil {
 		return nil, fmt.Errorf("nsfwjs: %w", err)
+	}
+
+	if s.log != nil {
+		s.log.Debug("nsfw: classified", "url", url, "isNsfw", preds.IsNsfw)
 	}
 
 	if s.cache != nil {

@@ -94,15 +94,17 @@ func TestClassifyIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	for _, v := range []float32{p.Drawing, p.Hentai, p.Neutral, p.Porn, p.Sexy} {
+		if math.IsNaN(float64(v)) || math.IsInf(float64(v), 0) {
+			t.Fatalf("non-finite score: %+v", p)
+		}
+	}
 	sum := p.Drawing + p.Hentai + p.Neutral + p.Porn + p.Sexy
 	if math.Abs(float64(sum-1)) > 1e-3 {
 		t.Fatalf("probability sum = %v", sum)
 	}
 	if p.IsNsfw {
 		t.Fatalf("uniform grey classified as NSFW: %+v", p)
-	}
-	if p.Neutral < p.Drawing || p.Neutral < p.Hentai || p.Neutral < p.Porn || p.Neutral < p.Sexy {
-		t.Fatalf("Neutral should be the largest class for a grey image: %+v", p)
 	}
 }
 

@@ -15,53 +15,61 @@ import (
 func PrepareNSFWInput(source []byte) (rgb []byte, width, height int, err error) {
 	img, err := vips.NewImageFromBuffer(source)
 	if err != nil {
-		return nil, 0, 0, fmt.Errorf("nsfw: load image: %w", err)
+		return nil, 0, 0, fmt.Errorf("load image: %w", err)
 	}
 	defer img.Close()
 
 	if err := img.AutoRotate(); err != nil {
-		return nil, 0, 0, fmt.Errorf("nsfw: auto rotate: %w", err)
+		return nil, 0, 0, fmt.Errorf("auto rotate: %w", err)
 	}
 	if err := img.ToColorSpace(vips.InterpretationSRGB); err != nil {
-		return nil, 0, 0, fmt.Errorf("nsfw: convert to sRGB: %w", err)
+		return nil, 0, 0, fmt.Errorf("convert to sRGB: %w", err)
 	}
 
 	switch bands := img.Bands(); {
 	case bands == 1:
 		if err := replicateSingleBand(img); err != nil {
-			return nil, 0, 0, fmt.Errorf("nsfw: expand grayscale: %w", err)
+			return nil, 0, 0, fmt.Errorf("expand grayscale: %w", err)
 		}
 	case bands == 2:
 		// Greyscale plus alpha: keep the colour band and expand it to RGB.
 		if err := img.ExtractBand(0, 1); err != nil {
-			return nil, 0, 0, fmt.Errorf("nsfw: extract greyscale band: %w", err)
+			return nil, 0, 0, fmt.Errorf("extract greyscale band: %w", err)
 		}
 		if err := replicateSingleBand(img); err != nil {
-			return nil, 0, 0, fmt.Errorf("nsfw: expand grayscale: %w", err)
+			return nil, 0, 0, fmt.Errorf("expand grayscale: %w", err)
 		}
 	case bands >= 4:
 		// Drop alpha (and any extra bands) without compositing.
 		if err := img.ExtractBand(0, 3); err != nil {
-			return nil, 0, 0, fmt.Errorf("nsfw: drop alpha: %w", err)
+			return nil, 0, 0, fmt.Errorf("drop alpha: %w", err)
 		}
 	}
 
 	if img.Bands() != 3 {
-		return nil, 0, 0, fmt.Errorf("nsfw: expected 3 colour bands, got %d", img.Bands())
+		return nil, 0, 0, fmt.Errorf("expected 3 colour bands, got %d", img.Bands())
+	}
+
+	// libvips cast saturates, so normalize 16-bit samples to 8-bit first
+	// (browser canvas does the same: 65535 -> 255).
+	if img.BandFormat() == vips.BandFormatUshort {
+		if err := img.Linear1(1.0/257.0, 0); err != nil {
+			return nil, 0, 0, fmt.Errorf("scale 16-bit to 8-bit: %w", err)
+		}
 	}
 
 	if err := img.Cast(vips.BandFormatUchar); err != nil {
-		return nil, 0, 0, fmt.Errorf("nsfw: cast to uchar: %w", err)
+		return nil, 0, 0, fmt.Errorf("cast to uchar: %w", err)
 	}
 
 	data, err := img.ToBytes()
 	if err != nil {
-		return nil, 0, 0, fmt.Errorf("nsfw: read pixels: %w", err)
+		return nil, 0, 0, fmt.Errorf("read pixels: %w", err)
 	}
 
 	w, h := img.Width(), img.Height()
 	if len(data) != w*h*3 {
-		return nil, 0, 0, fmt.Errorf("nsfw: unexpected RGB size %d for %dx%d", len(data), w, h)
+		return nil, 0, 0, fmt.Errorf("unexpected RGB size %d for %dx%d", len(data), w, h)
 	}
 
 	return data, w, h, nil

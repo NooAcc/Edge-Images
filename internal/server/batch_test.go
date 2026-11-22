@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -216,5 +217,28 @@ func TestBatchWithoutNSFWShape(t *testing.T) {
 	}
 	if _, ok := raw["contentType"]; !ok {
 		t.Fatal("missing contentType")
+	}
+}
+
+func TestBatchNSFWClassifierUnavailableSkipsSource(t *testing.T) {
+	env := newBatchEnv(t, nil)
+
+	resp := env.do(t, []batchRequestItem{
+		// Distinct URLs: only the non-nsfw item should cause a fetch.
+		{UUID: "a", URL: env.sourceURL + "?a", Params: nsfwParams()},
+		{UUID: "b", URL: env.sourceURL + "?b", Params: map[string]interface{}{"format": "png"}},
+	})
+
+	if resp["a"].Success {
+		t.Fatal("nsfw item should fail when the classifier is unavailable")
+	}
+	if !strings.Contains(resp["a"].Error, "nsfwjs:") {
+		t.Fatalf("error = %q, want nsfwjs: prefix", resp["a"].Error)
+	}
+	if !resp["b"].Success {
+		t.Fatalf("non-nsfw item failed: %s", resp["b"].Error)
+	}
+	if env.hits.Load() != 1 {
+		t.Fatalf("source fetches = %d, want 1 (nsfw item must not fetch)", env.hits.Load())
 	}
 }

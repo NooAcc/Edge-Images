@@ -65,7 +65,21 @@ python -m tf2onnx.convert --keras model.h5 \
 ```shell
 pip install -r tools/nsfw-model/requirements.txt
 python tools/nsfw-model/fetch.py
+python tools/nsfw-model/verify.py
 ```
 
-脚本会校验 SHA-256，打印模型 I/O，并执行一次零输入推理，要求输出为
+`fetch.py` 会校验 SHA-256，打印模型 I/O，并执行一次零输入推理，要求输出为
 `(1, 5)` 且概率和与 1 的差小于 1e-3。
+
+`verify.py` 额外校验灰图输入、复算 `alignCorners` 2×2→4×4 参考矩阵、运行对应的
+Go 单元测试；若本机安装了 Node 与 `@tensorflow/tfjs`，还会用
+`tf.image.resizeBilinear(..., true)` 交叉验证（要求最大绝对差 < 1e-6，否则跳过）。
+
+本仓库的验证结果：
+
+- SHA-256 匹配
+- 输入 `[N, 224, 224, 3]` float32；输出 `[N, 5]` float32
+- 零输入、灰图输入的概率和均为 1.000000
+- 2×2→4×4 参考矩阵最大绝对差 0.0
+- Go 单元测试 `TestResizeBilinearAlignCorners2x2To4x4` 通过
+- TFJS 交叉验证：本机未安装 `@tensorflow/tfjs`，跳过

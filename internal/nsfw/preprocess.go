@@ -13,10 +13,10 @@ import (
 // uses a different sampling grid, so the resize is implemented here.
 func PreprocessRGB(rgb []byte, width, height int) ([]float32, error) {
 	if width <= 0 || height <= 0 {
-		return nil, fmt.Errorf("nsfw: invalid input dimensions %dx%d", width, height)
+		return nil, fmt.Errorf("invalid input dimensions %dx%d", width, height)
 	}
 	if len(rgb) != width*height*3 {
-		return nil, fmt.Errorf("nsfw: expected %d RGB bytes for %dx%d, got %d",
+		return nil, fmt.Errorf("expected %d RGB bytes for %dx%d, got %d",
 			width*height*3, width, height, len(rgb))
 	}
 

@@ -33,6 +33,9 @@ const (
 	layoutNCHW
 )
 
+// expectedORTVersion is the ONNX Runtime version the Go module is pinned to.
+const expectedORTVersion = "1.31.0"
+
 func (l layout) String() string {
 	if l == layoutNCHW {
 		return "NCHW"
@@ -63,15 +66,12 @@ func layoutForDims(dims ort.Shape) (layout, error) {
 
 // Classifier runs the nsfwjs ONNX model.
 type Classifier struct {
-	mu         sync.RWMutex
-	session    *ort.DynamicAdvancedSession
-	inputName  string
-	outputName string
-	layout     layout
-	modelID    string
-	threshold  float32
-	sem        chan struct{}
-	log        *slog.Logger
+	mu        sync.RWMutex
+	session   *ort.DynamicAdvancedSession
+	layout    layout
+	modelID   string
+	threshold float32
+	sem       chan struct{}
 }
 
 // New loads the model and initializes ONNX Runtime. The caller must call
@@ -150,8 +150,13 @@ func New(cfg Config, log *slog.Logger) (*Classifier, error) {
 		return fail(fmt.Errorf("nsfw: create session: %w", err))
 	}
 
+	version := ort.GetVersion()
+	if version != expectedORTVersion {
+		log.Warn("nsfw: onnxruntime version mismatch",
+			"got", version, "want", expectedORTVersion)
+	}
 	log.Info("nsfw: onnxruntime ready",
-		"version", ort.GetVersion(),
+		"version", version,
 		"modelId", modelID,
 		"input", inputs[0].Name,
 		"output", outputs[0].Name,
@@ -161,14 +166,11 @@ func New(cfg Config, log *slog.Logger) (*Classifier, error) {
 	)
 
 	return &Classifier{
-		session:    session,
-		inputName:  inputs[0].Name,
-		outputName: outputs[0].Name,
-		layout:     inputLayout,
-		modelID:    modelID,
-		threshold:  threshold,
-		sem:        make(chan struct{}, cfg.Concurrency),
-		log:        log,
+		session:   session,
+		layout:    inputLayout,
+		modelID:   modelID,
+		threshold: threshold,
+		sem:       make(chan struct{}, cfg.Concurrency),
 	}, nil
 }
 
@@ -184,7 +186,7 @@ func (c *Classifier) Classify(ctx context.Context, rgb []byte, width, height int
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	if c.session == nil {
-		return nil, fmt.Errorf("nsfw: classifier is closed")
+		return nil, fmt.Errorf("classifier is closed")
 	}
 
 	input, err := nsfw.PreprocessRGB(rgb, width, height)
@@ -200,18 +202,18 @@ func (c *Classifier) Classify(ctx context.Context, rgb []byte, width, height int
 
 	inputTensor, err := ort.NewTensor(shape, input)
 	if err != nil {
-		return nil, fmt.Errorf("nsfw: create input tensor: %w", err)
+		return nil, fmt.Errorf("create input tensor: %w", err)
 	}
 	defer inputTensor.Destroy()
 
 	outputTensor, err := ort.NewEmptyTensor[float32](ort.NewShape(1, 5))
 	if err != nil {
-		return nil, fmt.Errorf("nsfw: create output tensor: %w", err)
+		return nil, fmt.Errorf("create output tensor: %w", err)
 	}
 	defer outputTensor.Destroy()
 
 	if err := c.session.Run([]ort.Value{inputTensor}, []ort.Value{outputTensor}); err != nil {
-		return nil, fmt.Errorf("nsfw: run inference: %w", err)
+		return nil, fmt.Errorf("run inference: %w", err)
 	}
 
 	return nsfw.PredictionsFromOutput(outputTensor.GetData(), c.threshold)

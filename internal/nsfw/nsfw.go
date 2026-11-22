@@ -69,7 +69,7 @@ func ApplySoftmax(logits []float32) []float32 {
 // a softmax is applied first.
 func PredictionsFromOutput(probs []float32, threshold float32) (*Predictions, error) {
 	if len(probs) != 5 {
-		return nil, fmt.Errorf("nsfw: expected 5 output values, got %d", len(probs))
+		return nil, fmt.Errorf("expected 5 output values, got %d", len(probs))
 	}
 
 	var sum float64
@@ -77,7 +77,7 @@ func PredictionsFromOutput(probs []float32, threshold float32) (*Predictions, er
 	for _, v := range probs {
 		f := float64(v)
 		if math.IsNaN(f) || math.IsInf(f, 0) {
-			return nil, fmt.Errorf("nsfw: output contains a non-finite value")
+			return nil, fmt.Errorf("output contains a non-finite value")
 		}
 		if v < 0 || v > 1 {
 			needsSoftmax = true

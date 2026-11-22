@@ -166,6 +166,16 @@ func (r *batchRunner) process(ctx context.Context, items []batchRequestItem, log
 			continue
 		}
 
+		// Fail fast instead of downloading/processing a source that can never
+		// be classified.
+		if p.NSFWJS && !r.nsfw.available() {
+			setResponse(item.UUID, batchResponseItem{
+				Success: false,
+				Error:   "nsfwjs: classifier is not available",
+			})
+			continue
+		}
+
 		var cachedImage *cache.Entry
 		if r.cache != nil {
 			if entry, found := r.cache.Get(buildProcessedCacheKey(p)); found {

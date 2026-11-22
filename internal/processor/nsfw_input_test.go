@@ -77,3 +77,25 @@ func TestPrepareNSFWInputRejectsInvalidBytes(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
+
+func TestPrepareNSFWInputScales16Bit(t *testing.T) {
+	img := image.NewRGBA64(image.Rect(0, 0, 2, 1))
+	img.SetRGBA64(0, 0, color.RGBA64{R: 65535, G: 65535, B: 65535, A: 65535})
+	img.SetRGBA64(1, 0, color.RGBA64{R: 32896, G: 32896, B: 32896, A: 65535})
+
+	rgb, w, h, err := PrepareNSFWInput(encodePNG(t, img))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w != 2 || h != 1 || len(rgb) != 6 {
+		t.Fatalf("size = %dx%d len=%d, want 2x1 len=6", w, h, len(rgb))
+	}
+	for c := 0; c < 3; c++ {
+		if rgb[c] < 254 {
+			t.Fatalf("white channel %d = %d, want ~255", c, rgb[c])
+		}
+		if diff := int(rgb[3+c]) - 128; diff < -1 || diff > 1 {
+			t.Fatalf("mid channel %d = %d, want ~128", c, rgb[3+c])
+		}
+	}
+}
