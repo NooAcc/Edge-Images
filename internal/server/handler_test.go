@@ -122,7 +122,7 @@ func TestHandlerNSFWEnabled(t *testing.T) {
 	fake := &fakeClassifier{preds: testPreds()}
 	env := newHandlerEnv(t, fake)
 
-	rec := env.get(t, "?format=png&nsfwjs=1")
+	rec := env.get(t, "?format=png&nsfw=1")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
@@ -140,7 +140,7 @@ func TestHandlerNSFWEnabled(t *testing.T) {
 	if _, err := base64.StdEncoding.DecodeString(resp.Image); err != nil {
 		t.Fatalf("image is not base64: %v", err)
 	}
-	if resp.NSFW == nil || resp.NSFW.Neutral != 0.91 {
+	if resp.NSFW == nil || resp.NSFW.Safe != 0.91 {
 		t.Fatalf("nsfw = %+v", resp.NSFW)
 	}
 	if fake.Calls() != 1 {
@@ -157,11 +157,11 @@ func TestHandlerNSFWEnabled(t *testing.T) {
 func TestHandlerNSFWClassifierUnavailable(t *testing.T) {
 	env := newHandlerEnv(t, nil)
 
-	rec := env.get(t, "?format=png&nsfwjs=1")
+	rec := env.get(t, "?format=png&nsfw=1")
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), "nsfwjs classifier is not available") {
+	if !strings.Contains(rec.Body.String(), "nsfw classifier is not available") {
 		t.Fatalf("body = %s", rec.Body.String())
 	}
 }
@@ -170,11 +170,11 @@ func TestHandlerNSFWClassificationError(t *testing.T) {
 	fake := &fakeClassifier{preds: testPreds(), err: errTest}
 	env := newHandlerEnv(t, fake)
 
-	rec := env.get(t, "?format=png&nsfwjs=1")
+	rec := env.get(t, "?format=png&nsfw=1")
 	if rec.Code != http.StatusBadGateway {
 		t.Fatalf("status = %d, want 502", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), "nsfwjs:") {
+	if !strings.Contains(rec.Body.String(), "nsfw:") {
 		t.Fatalf("body = %s", rec.Body.String())
 	}
 }
@@ -183,13 +183,13 @@ func TestHandlerNSFWProcessedCacheStillFetchesSource(t *testing.T) {
 	fake := &fakeClassifier{preds: testPreds()}
 	env := newHandlerEnv(t, fake)
 
-	p := parseTestParams(t, env.sourceURL, "format=png&nsfwjs=1")
+	p := parseTestParams(t, env.sourceURL, "format=png&nsfw=1")
 	env.cache.Set(buildProcessedCacheKey(p), &cache.Entry{
 		Buffer:      pngBytes(t, 4, 4),
 		ContentType: "image/png",
 	})
 
-	rec := env.get(t, "?format=png&nsfwjs=1")
+	rec := env.get(t, "?format=png&nsfw=1")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
@@ -216,7 +216,7 @@ func TestHandlerNSFWCacheHitSkipsSource(t *testing.T) {
 	fake := &fakeClassifier{preds: testPreds()}
 	env := newHandlerEnv(t, fake)
 
-	p := parseTestParams(t, env.sourceURL, "format=png&nsfwjs=1")
+	p := parseTestParams(t, env.sourceURL, "format=png&nsfw=1")
 	env.cache.Set(buildProcessedCacheKey(p), &cache.Entry{
 		Buffer:      pngBytes(t, 4, 4),
 		ContentType: "image/png",
@@ -227,7 +227,7 @@ func TestHandlerNSFWCacheHitSkipsSource(t *testing.T) {
 		ContentType: "application/json",
 	})
 
-	rec := env.get(t, "?format=png&nsfwjs=1")
+	rec := env.get(t, "?format=png&nsfw=1")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
@@ -242,7 +242,7 @@ func TestHandlerNSFWCacheHitSkipsSource(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatal(err)
 	}
-	if resp.NSFW == nil || resp.NSFW.Neutral != 0.91 {
+	if resp.NSFW == nil || resp.NSFW.Safe != 0.91 {
 		t.Fatalf("nsfw = %+v", resp.NSFW)
 	}
 }
@@ -250,7 +250,7 @@ func TestHandlerNSFWCacheHitSkipsSource(t *testing.T) {
 func TestHandlerNSFWJSONConflict(t *testing.T) {
 	env := newHandlerEnv(t, &fakeClassifier{preds: testPreds()})
 
-	rec := env.get(t, "?format=json&nsfwjs=1")
+	rec := env.get(t, "?format=json&nsfw=1")
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", rec.Code)
 	}
@@ -265,7 +265,7 @@ func TestHandlerNSFWProcessingFallback(t *testing.T) {
 		return nil, errors.New("simulated processing failure")
 	}
 
-	rec := env.get(t, "?format=png&nsfwjs=1")
+	rec := env.get(t, "?format=png&nsfw=1")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
@@ -283,7 +283,7 @@ func TestHandlerNSFWProcessingFallback(t *testing.T) {
 	if resp.ContentType != "image/png" || resp.Width != 4 || resp.Height != 4 {
 		t.Fatalf("resp = %+v", resp)
 	}
-	if resp.NSFW == nil || resp.NSFW.Neutral != 0.91 {
+	if resp.NSFW == nil || resp.NSFW.Safe != 0.91 {
 		t.Fatalf("nsfw = %+v", resp.NSFW)
 	}
 	if fake.Calls() != 1 {

@@ -17,7 +17,7 @@ Go 语言重写的图片和视频处理服务。下载远程媒体，按参数�
 - 支持 WebP、JPEG、PNG、AVIF 输出，质量可控
 - 支持视频封面提取（MP4/WebM）和元数据查询
 - `format=json` 返回图片或视频元信息
-- 可选内置 nsfwjs 内容分类（`nsfwjs` 参数）：返回图片的同时返回五分类结果
+- 可选内置 NSFW 内容分类（`nsfw` 参数）：基于 `viddexa/nsfw-detection-2-mini`（EfficientNet-B4）
 - 批量处理：两阶段队列处理，先并发下载再限流处理，支持同步（最多 20 张）和异步回调（最多 50 张）两种模式
 - 平台感知配置：根据部署平台自动调整参数和缓存策略
 - 两级缓存（ristretto 内存 + 文件系统磁盘）：Docker 部署下自动启用
@@ -36,9 +36,17 @@ go mod tidy
 # 运行测试
 go test ./...
 
-# 启动服务
+# 启动服务（NSFW 模型需放到 /data/models 或用 NSFW_MODEL_PATH 指向）
 go run ./cmd/server
 ```
+
+NSFW 模型不随仓库或镜像分发。本地开发可把生成的模型放到 `./models`，然后：
+
+```shell
+NSFW_MODEL_PATH=./models/nsfw_detection_2_mini.onnx go run ./cmd/server
+```
+
+模型的来源、哈希与生成方式见 `models/README.md`。
 
 ## Docker 部署
 
@@ -51,6 +59,10 @@ docker run -p 3000:3000 -e IMAGE_URL_ALLOWLIST=example.com edge-image-go
 
 # 挂载缓存卷
 docker run -p 3000:3000 -v edge-cache:/data -e IMAGE_URL_ALLOWLIST=example.com edge-image-go
+
+# 使用 NSFW 分类时，把模型放到 ./models 并只读挂载到 /data/models
+docker run -p 3000:3000 -v edge-cache:/data -v "$PWD/models:/data/models:ro" \
+  -e IMAGE_URL_ALLOWLIST=example.com edge-image-go
 ```
 
 ## API
@@ -119,15 +131,15 @@ Content-Type: application/json
 | `background` | `FFFFFF` | 填充背景色，RRGGBB 格式，用于 `crop=none` 时的填充       |
 | `rotate`     | -        | 旋转角度：`90`、`180`、`270`                             |
 | `flip`       | -        | 翻转方向：`h`、`v`、`hv`                                 |
-| `nsfwjs`     | -        | 可选；开启后响应变为 JSON（base64 图片 + nsfw 五分类）    |
+| `nsfw`       | -        | 可选；开启后响应变为 JSON（base64 图片 + NSFW 五分类）    |
 
 ### NSFW 分类（可选）
 
-单图、同步批量和异步批量都接受 `nsfwjs` 参数。开启后，单图响应从图片二进制变为
+单图、同步批量和异步批量都接受 `nsfw` 参数。开启后，单图响应从图片二进制变为
 JSON（图片以标准 base64 返回）；批量响应的 `data` 中增加 `nsfw` 字段。
 
 ```text
-GET /api/media/<encoded-source-url>?width=400&format=png&nsfwjs=1
+GET /api/media/<encoded-source-url>?width=400&format=png&nsfw=1
 ```
 
 ```json
@@ -140,7 +152,7 @@ GET /api/media/<encoded-source-url>?width=400&format=png&nsfwjs=1
   "nsfw": {
     "drawing": 0.02,
     "hentai": 0.01,
-    "neutral": 0.91,
+    "safe": 0.91,
     "porn": 0.03,
     "sexy": 0.03,
     "isNsfw": false
@@ -148,14 +160,16 @@ GET /api/media/<encoded-source-url>?width=400&format=png&nsfwjs=1
 }
 ```
 
-- `isNsfw = hentai + porn + sexy >= NSFW_THRESHOLD`（默认 `0.5`，`drawing` 不计入）。
+- `isNsfw = hentai + porn + sexy >= NSFW_THRESHOLD`（默认 `0.5`，`safe` 与 `drawing` 不计入）。
 - 分类对象是源图（视频取封面帧），与输出尺寸、裁剪、格式无关，结果按源 URL 缓存。
 - 参数取值：不存在为关闭；存在但为空、`1`、`true`、`yes`、`on` 为开启；
   `0`、`false`、`no`、`off` 为关闭；其他值返回 400。
-- `format=json` 与开启的 `nsfwjs` 同时使用会返回 400。
+- `format=json` 与开启的 `nsfw` 同时使用会返回 400；`format=json&nsfw=0` 仍按元数据请求处理。
 - 分类器不可用（模型/运行库缺失）时单图返回 503；推理失败返回 502。
-  批量中只有请求了 `nsfwjs` 的 item 会 `success=false`（`error` 以 `nsfwjs:` 开头）。
-- 内置模型为 nsfwjs 默认 MobileNetV2（MIT，约 9.8MB）；详见 `models/README.md`。
+  批量中只有请求了 `nsfw` 的 item 会 `success=false`（`error` 以 `nsfw:` 开头）。
+- 模型为 `viddexa/nsfw-detection-2-mini`（EfficientNet-B4，Apache-2.0，约 67 MiB）。
+  ONNX 权重不随仓库或镜像分发，需手动上传到 HF Space Bucket 的
+  `/data/models/nsfw_detection_2_mini.onnx`；详见 `models/README.md`。
 
 ## 环境变量
 
@@ -169,7 +183,7 @@ GET /api/media/<encoded-source-url>?width=400&format=png&nsfwjs=1
 | `CACHE_MAX_DISK_GB`  | `50`   | 磁盘缓存大小（GB）                       |
 | `IMAGE_URL_ALLOWLIST`| -      | 源媒体域名白名单                         |
 | `IMAGE_DEBUG_LOGS`   | `0`    | 设为 `1` 启用调试日志                    |
-| `NSFW_MODEL_PATH`    | `models/nsfwjs_mobilenet_v2.onnx` | nsfwjs ONNX 模型路径；文件缺失时功能禁用 |
+| `NSFW_MODEL_PATH`    | `/data/models/nsfw_detection_2_mini.onnx` | NSFW ONNX 模型路径；文件缺失时功能禁用 |
 | `ONNXRUNTIME_LIB_PATH` | -    | ONNX Runtime 动态库路径；Docker 镜像内已设置 |
 | `NSFW_THRESHOLD`     | `0.5`  | `isNsfw` 判定阈值（0–1）；非法值会禁用分类器 |
 | `NSFW_CONCURRENCY`   | `2`    | 并发推理上限；非法值回落为 `2`            |
@@ -184,12 +198,12 @@ internal/
   processor/           — 图片处理（govips）和视频处理（ffmpeg）
   fetcher/             — HTTP 下载，重试，Range 请求
   params/              — 查询参数解析
-  nsfw/                — nsfwjs 类型、softmax、alignCorners 预处理（纯 Go）
+  nsfw/                — NSFW 类型、softmax、EfficientNet-B4 预处理（纯 Go）
   nsfw/onnx/           — ONNX Runtime 分类器（cgo）
   allowlist/           — 域名白名单
   logger/              — 结构化日志
   server/              — HTTP 路由和处理器
-models/                — 内置 nsfwjs MobileNetV2 ONNX 模型（MIT）
+models/                — 模型来源、许可与校验信息（ONNX 权重不在仓库）
 public/                — 前端静态文件
 ```
 

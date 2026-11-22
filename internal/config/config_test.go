@@ -14,7 +14,7 @@ func TestLoadNSFWDefaults(t *testing.T) {
 	clearNSFWEnv(t)
 
 	cfg := Load()
-	if cfg.NSFW.ModelPath != "models/nsfwjs_mobilenet_v2.onnx" {
+	if cfg.NSFW.ModelPath != "/data/models/nsfw_detection_2_mini.onnx" {
 		t.Fatalf("ModelPath = %q", cfg.NSFW.ModelPath)
 	}
 	if cfg.NSFW.ORTLibPath != "" {

@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"math"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	ort "github.com/yalue/onnxruntime_go"
@@ -22,37 +24,38 @@ func classifierTestConfig(t *testing.T) (Config, bool) {
 	return Config{ModelPath: model, ORTLibPath: lib, Threshold: 0.5, Concurrency: 1}, true
 }
 
-func TestLayoutForDims(t *testing.T) {
-	cases := []struct {
-		name    string
-		dims    ort.Shape
-		want    layout
-		wantErr bool
-	}{
-		{"nhwc", ort.NewShape(1, 224, 224, 3), layoutNHWC, false},
-		{"nhwc dynamic batch", ort.NewShape(-1, 224, 224, 3), layoutNHWC, false},
-		{"nchw", ort.NewShape(1, 3, 224, 224), layoutNCHW, false},
-		{"nchw dynamic batch", ort.NewShape(-1, 3, 224, 224), layoutNCHW, false},
-		{"bad channels", ort.NewShape(1, 4, 224, 224), 0, true},
-		{"bad rank", ort.NewShape(1, 3, 224), 0, true},
+func TestValidateInputDims(t *testing.T) {
+	valid := []ort.Shape{
+		ort.NewShape(1, 3, 380, 380),
+		ort.NewShape(-1, 3, 380, 380),
 	}
+	for _, dims := range valid {
+		if err := validateInputDims(dims); err != nil {
+			t.Fatalf("%v: %v", dims, err)
+		}
+	}
+	invalid := []ort.Shape{
+		ort.NewShape(1, 380, 380, 3),
+		ort.NewShape(1, 4, 380, 380),
+		ort.NewShape(1, 3, 224, 224),
+		ort.NewShape(1, 3, 380),
+		ort.NewShape(2, 3, 380, 380),
+	}
+	for _, dims := range invalid {
+		if err := validateInputDims(dims); err == nil {
+			t.Fatalf("%v: expected error", dims)
+		}
+	}
+}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got, err := layoutForDims(tc.dims)
-			if tc.wantErr {
-				if err == nil {
-					t.Fatalf("expected error, got layout %v", got)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			if got != tc.want {
-				t.Fatalf("layout = %v, want %v", got, tc.want)
-			}
-		})
+func TestNewRejectsMissingModel(t *testing.T) {
+	_, err := New(Config{
+		ModelPath:   filepath.Join(t.TempDir(), "missing.onnx"),
+		Threshold:   0.5,
+		Concurrency: 1,
+	}, slog.Default())
+	if err == nil || !strings.Contains(err.Error(), "not readable") {
+		t.Fatalf("err = %v, want not readable", err)
 	}
 }
 
@@ -84,22 +87,22 @@ func TestClassifyIntegration(t *testing.T) {
 	defer Shutdown()
 	defer c.Close()
 
-	rgb := make([]byte, 224*224*3)
+	rgb := make([]byte, nsfw.ModelInputSize*nsfw.ModelInputSize*3)
 	for i := range rgb {
 		rgb[i] = 128
 	}
 
-	p, err := c.Classify(context.Background(), rgb, 224, 224)
+	p, err := c.Classify(context.Background(), rgb, nsfw.ModelInputSize, nsfw.ModelInputSize)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	for _, v := range []float32{p.Drawing, p.Hentai, p.Neutral, p.Porn, p.Sexy} {
+	for _, v := range []float32{p.Drawing, p.Hentai, p.Safe, p.Porn, p.Sexy} {
 		if math.IsNaN(float64(v)) || math.IsInf(float64(v), 0) {
 			t.Fatalf("non-finite score: %+v", p)
 		}
 	}
-	sum := p.Drawing + p.Hentai + p.Neutral + p.Porn + p.Sexy
+	sum := p.Drawing + p.Hentai + p.Safe + p.Porn + p.Sexy
 	if math.Abs(float64(sum-1)) > 1e-3 {
 		t.Fatalf("probability sum = %v", sum)
 	}

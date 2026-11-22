@@ -2,15 +2,21 @@ package nsfw
 
 import (
 	"fmt"
-	"math"
 )
 
-// PreprocessRGB converts a full-resolution packed RGB buffer into the
-// float32 NHWC tensor expected by the nsfwjs model.
+const rescaleFactor = 0.00392156862745098
+
+var (
+	imageMean = [3]float64{0.485, 0.456, 0.406}
+	imageStd  = [3]float64{0.47853944, 0.4732864, 0.47434163}
+)
+
+// PreprocessRGB converts a full-resolution packed RGB buffer into the NCHW
+// float32 tensor expected by nsfw-detection-2-mini.
 //
-// nsfwjs does: toFloat().div(255) followed by
-// tf.image.resizeBilinear(..., alignCorners=true). libvips resize/thumbnail
-// uses a different sampling grid, so the resize is implemented here.
+// It reproduces the upstream EfficientNetImageProcessorPil (use_fast=False):
+// Pillow NEAREST resize to 380x380, rescale by 1/255, ImageNet normalization,
+// and the extra include_top division by std.
 func PreprocessRGB(rgb []byte, width, height int) ([]float32, error) {
 	if width <= 0 || height <= 0 {
 		return nil, fmt.Errorf("invalid input dimensions %dx%d", width, height)
@@ -19,73 +25,47 @@ func PreprocessRGB(rgb []byte, width, height int) ([]float32, error) {
 		return nil, fmt.Errorf("expected %d RGB bytes for %dx%d, got %d",
 			width*height*3, width, height, len(rgb))
 	}
-
-	return resizeBilinearAlignCorners(rgb, width, height, ModelInputSize, ModelInputSize), nil
+	const spatial = ModelInputSize * ModelInputSize
+	xTab := nearestIndices(width, ModelInputSize)
+	yTab := nearestIndices(height, ModelInputSize)
+	out := make([]float32, 3*spatial)
+	for y := 0; y < ModelInputSize; y++ {
+		srcY := yTab[y]
+		for x := 0; x < ModelInputSize; x++ {
+			srcX := xTab[x]
+			srcOff := (srcY*width + srcX) * 3
+			dstOff := y*ModelInputSize + x
+			for c := 0; c < 3; c++ {
+				v := float64(rgb[srcOff+c]) * rescaleFactor
+				v = (v - imageMean[c]) / imageStd[c]
+				v = v / imageStd[c]
+				out[c*spatial+dstOff] = float32(v)
+			}
+		}
+	}
+	return out, nil
 }
 
-// resizeBilinearAlignCorners performs bilinear sampling with the alignment
-// used by TensorFlow's resizeBilinear(alignCorners=true):
-//
-//	srcY = y * (height - 1) / (outHeight - 1)
-//	srcX = x * (width  - 1) / (outWidth  - 1)
-//
-// The source is packed RGB; the output is NHWC float32 scaled to [0, 1].
-func resizeBilinearAlignCorners(src []byte, width, height, outWidth, outHeight int) []float32 {
-	out := make([]float32, outWidth*outHeight*3)
-	if width <= 0 || height <= 0 || outWidth <= 0 || outHeight <= 0 {
+// nearestIndices reproduces Pillow's NEAREST sampling centres. Pillow walks a
+// source position that starts at scale*0.5 and advances by scale per output
+// pixel; the index is the truncated position, clamped to the source bounds.
+func nearestIndices(srcSize, dstSize int) []int {
+	out := make([]int, dstSize)
+	if srcSize <= 0 || dstSize <= 0 {
 		return out
 	}
-
-	for y := 0; y < outHeight; y++ {
-		srcY := 0.0
-		if outHeight > 1 {
-			srcY = float64(y) * float64(height-1) / float64(outHeight-1)
+	scale := float64(srcSize) / float64(dstSize)
+	pos := scale * 0.5
+	for i := range out {
+		idx := int(pos)
+		if idx < 0 {
+			idx = 0
 		}
-		y0 := int(math.Floor(srcY))
-		if y0 >= height {
-			y0 = height - 1
+		if idx >= srcSize {
+			idx = srcSize - 1
 		}
-		if y0 < 0 {
-			y0 = 0
-		}
-		y1 := y0 + 1
-		if y1 >= height {
-			y1 = height - 1
-		}
-		fy := srcY - float64(y0)
-
-		for x := 0; x < outWidth; x++ {
-			srcX := 0.0
-			if outWidth > 1 {
-				srcX = float64(x) * float64(width-1) / float64(outWidth-1)
-			}
-			x0 := int(math.Floor(srcX))
-			if x0 >= width {
-				x0 = width - 1
-			}
-			if x0 < 0 {
-				x0 = 0
-			}
-			x1 := x0 + 1
-			if x1 >= width {
-				x1 = width - 1
-			}
-			fx := srcX - float64(x0)
-
-			dst := (y*outWidth + x) * 3
-			p00 := (y0*width + x0) * 3
-			p01 := (y0*width + x1) * 3
-			p10 := (y1*width + x0) * 3
-			p11 := (y1*width + x1) * 3
-
-			for c := 0; c < 3; c++ {
-				top := float64(src[p00+c]) + (float64(src[p01+c])-float64(src[p00+c]))*fx
-				bottom := float64(src[p10+c]) + (float64(src[p11+c])-float64(src[p10+c]))*fx
-				value := top + (bottom-top)*fy
-				out[dst+c] = float32(value / 255.0)
-			}
-		}
+		out[i] = idx
+		pos += scale
 	}
-
 	return out
 }

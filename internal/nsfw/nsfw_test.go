@@ -6,41 +6,36 @@ import (
 )
 
 func TestPredictionsFromOutputMapping(t *testing.T) {
-	p, err := PredictionsFromOutput([]float32{0.1, 0.2, 0.3, 0.25, 0.15}, 0.5)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if p.Drawing != 0.1 || p.Hentai != 0.2 || p.Neutral != 0.3 || p.Porn != 0.25 || p.Sexy != 0.15 {
-		t.Fatalf("unexpected mapping: %+v", p)
-	}
-	if !p.IsNsfw {
-		t.Fatalf("IsNsfw = false, want true (hentai+porn+sexy = 0.6)")
-	}
-
-	p2, err := PredictionsFromOutput([]float32{0.1, 0.2, 0.3, 0.25, 0.15}, 0.61)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if p2.IsNsfw {
-		t.Fatalf("IsNsfw = true, want false at threshold 0.61")
-	}
-}
-
-func TestPredictionsFromOutputAppliesSoftmaxToLogits(t *testing.T) {
 	p, err := PredictionsFromOutput([]float32{1, 2, 3, 4, 5}, 0.5)
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Class order is safe, hentai, porn, sexy, drawing (spec 8.1 id2label).
+	want := []float32{0.01165623, 0.03168492, 0.08612854, 0.23412165, 0.63640865}
+	got := []float32{p.Safe, p.Hentai, p.Porn, p.Sexy, p.Drawing}
+	for i := range want {
+		if math.Abs(float64(got[i]-want[i])) > 1e-6 {
+			t.Fatalf("class %d = %v, want %v", i, got[i], want[i])
+		}
+	}
+	if p.IsNsfw {
+		t.Fatalf("IsNsfw = true, want false (hentai+porn+sexy = 0.3519 < 0.5)")
+	}
 
-	sum := p.Drawing + p.Hentai + p.Neutral + p.Porn + p.Sexy
-	if math.Abs(float64(sum-1)) > 1e-6 {
-		t.Fatalf("sum = %v, want 1", sum)
+	p2, err := PredictionsFromOutput([]float32{1, 2, 3, 4, 5}, 0.35)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if p.Sexy <= p.Porn || p.Sexy <= p.Neutral || p.Sexy <= p.Hentai || p.Sexy <= p.Drawing {
-		t.Fatalf("Sexy should be the largest class: %+v", p)
+	if !p2.IsNsfw {
+		t.Fatalf("IsNsfw = false, want true at threshold 0.35")
 	}
-	if !p.IsNsfw {
-		t.Fatalf("IsNsfw = false, want true")
+
+	p3, err := PredictionsFromOutput([]float32{0, 5, 4, 4, 0}, 0.5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !p3.IsNsfw {
+		t.Fatalf("IsNsfw = false, want true for nsfw-dominant logits")
 	}
 }
 

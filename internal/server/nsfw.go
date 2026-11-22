@@ -16,7 +16,7 @@ import (
 
 // ErrNSFWUnavailable is returned when the classifier could not be initialized
 // (missing model or ONNX Runtime library, or invalid configuration).
-var ErrNSFWUnavailable = errors.New("nsfwjs classifier is not available")
+var ErrNSFWUnavailable = errors.New("nsfw classifier is not available")
 
 // nsfwService couples a classifier with the per-source-URL prediction cache.
 type nsfwService struct {
@@ -83,17 +83,17 @@ func (s *nsfwService) ClassifySource(ctx context.Context, url string, source []b
 	case s.sem <- struct{}{}:
 		defer func() { <-s.sem }()
 	case <-ctx.Done():
-		return nil, fmt.Errorf("nsfwjs: %w", ctx.Err())
+		return nil, fmt.Errorf("nsfw: %w", ctx.Err())
 	}
 
 	rgb, width, height, err := processor.PrepareNSFWInput(source)
 	if err != nil {
-		return nil, fmt.Errorf("nsfwjs: %w", err)
+		return nil, fmt.Errorf("nsfw: %w", err)
 	}
 
 	preds, err := s.classifier.Classify(ctx, rgb, width, height)
 	if err != nil {
-		return nil, fmt.Errorf("nsfwjs: %w", err)
+		return nil, fmt.Errorf("nsfw: %w", err)
 	}
 
 	if s.log != nil {
@@ -119,7 +119,7 @@ type imageData struct {
 	NSFW        *nsfw.Predictions `json:"nsfw,omitempty"`
 }
 
-// nsfwImageResponse is the single-image response when nsfwjs is enabled.
+// nsfwImageResponse is the single-image response when NSFW classification is enabled.
 type nsfwImageResponse struct {
 	Width       int               `json:"width"`
 	Height      int               `json:"height"`

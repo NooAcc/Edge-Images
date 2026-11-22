@@ -74,7 +74,7 @@ func TestAsyncBatchNSFW(t *testing.T) {
 	if err := json.Unmarshal(item.Data, &data); err != nil {
 		t.Fatal(err)
 	}
-	if data.NSFW == nil || data.NSFW.Neutral != 0.91 {
+	if data.NSFW == nil || data.NSFW.Safe != 0.91 {
 		t.Fatalf("nsfw = %+v", data.NSFW)
 	}
 	if fake.Calls() != 1 {
@@ -131,7 +131,7 @@ func TestAsyncBatchBase64(t *testing.T) {
 	if err := json.Unmarshal(item.Data, &data); err != nil {
 		t.Fatal(err)
 	}
-	if data.NSFW == nil || data.NSFW.Neutral != 0.91 {
+	if data.NSFW == nil || data.NSFW.Safe != 0.91 {
 		t.Fatalf("nsfw = %+v", data.NSFW)
 	}
 	if fake.Calls() != 1 {

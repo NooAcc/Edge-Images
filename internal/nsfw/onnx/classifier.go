@@ -26,49 +26,27 @@ type Config struct {
 	Concurrency int
 }
 
-type layout int
-
-const (
-	layoutNHWC layout = iota
-	layoutNCHW
-)
-
 // expectedORTVersion is the ONNX Runtime version the Go module is pinned to.
 const expectedORTVersion = "1.31.0"
 
-func (l layout) String() string {
-	if l == layoutNCHW {
-		return "NCHW"
+// validateInputDims accepts the NCHW [N,3,380,380] input contract. The batch
+// dimension may be dynamic.
+func validateInputDims(dims ort.Shape) error {
+	if len(dims) != 4 || dims[1] != 3 ||
+		dims[2] != nsfw.ModelInputSize || dims[3] != nsfw.ModelInputSize {
+		return fmt.Errorf("nsfw: expected NCHW input [N,3,%d,%d], got %v",
+			nsfw.ModelInputSize, nsfw.ModelInputSize, dims)
 	}
-	return "NHWC"
+	if dims[0] != 1 && dims[0] != -1 {
+		return fmt.Errorf("nsfw: unsupported batch dimension %v", dims)
+	}
+	return nil
 }
 
-// layoutForDims identifies the tensor layout from the model's input shape.
-// The batch dimension may be dynamic.
-func layoutForDims(dims ort.Shape) (layout, error) {
-	if len(dims) != 4 {
-		return 0, fmt.Errorf("nsfw: expected a 4-dimensional input, got %v", dims)
-	}
-	if dims[3] == 3 {
-		if dims[1] != nsfw.ModelInputSize || dims[2] != nsfw.ModelInputSize {
-			return 0, fmt.Errorf("nsfw: unsupported NHWC input shape %v", dims)
-		}
-		return layoutNHWC, nil
-	}
-	if dims[1] == 3 {
-		if dims[2] != nsfw.ModelInputSize || dims[3] != nsfw.ModelInputSize {
-			return 0, fmt.Errorf("nsfw: unsupported NCHW input shape %v", dims)
-		}
-		return layoutNCHW, nil
-	}
-	return 0, fmt.Errorf("nsfw: unsupported input shape %v", dims)
-}
-
-// Classifier runs the nsfwjs ONNX model.
+// Classifier runs the nsfw-detection-2-mini ONNX model.
 type Classifier struct {
 	mu        sync.RWMutex
 	session   *ort.DynamicAdvancedSession
-	layout    layout
 	modelID   string
 	threshold float32
 	sem       chan struct{}
@@ -90,6 +68,9 @@ func New(cfg Config, log *slog.Logger) (*Classifier, error) {
 	}
 	if cfg.Concurrency < 1 {
 		return nil, fmt.Errorf("nsfw: concurrency must be >= 1, got %d", cfg.Concurrency)
+	}
+	if _, err := os.Stat(cfg.ModelPath); err != nil {
+		return nil, fmt.Errorf("nsfw: model file %q is not readable: %w (upload it to /data/models or set NSFW_MODEL_PATH)", cfg.ModelPath, err)
 	}
 
 	initializedHere := false
@@ -130,8 +111,7 @@ func New(cfg Config, log *slog.Logger) (*Classifier, error) {
 		return fail(fmt.Errorf("nsfw: output %q has unexpected shape %v",
 			outputs[0].Name, outDims))
 	}
-	inputLayout, err := layoutForDims(inputs[0].Dimensions)
-	if err != nil {
+	if err := validateInputDims(inputs[0].Dimensions); err != nil {
 		return fail(err)
 	}
 
@@ -160,14 +140,12 @@ func New(cfg Config, log *slog.Logger) (*Classifier, error) {
 		"modelId", modelID,
 		"input", inputs[0].Name,
 		"output", outputs[0].Name,
-		"layout", inputLayout.String(),
 		"threshold", threshold,
 		"concurrency", cfg.Concurrency,
 	)
 
 	return &Classifier{
 		session:   session,
-		layout:    inputLayout,
 		modelID:   modelID,
 		threshold: threshold,
 		sem:       make(chan struct{}, cfg.Concurrency),
@@ -194,11 +172,7 @@ func (c *Classifier) Classify(ctx context.Context, rgb []byte, width, height int
 		return nil, err
 	}
 
-	shape := ort.NewShape(1, nsfw.ModelInputSize, nsfw.ModelInputSize, 3)
-	if c.layout == layoutNCHW {
-		input = nhwcToNCHW(input)
-		shape = ort.NewShape(1, 3, nsfw.ModelInputSize, nsfw.ModelInputSize)
-	}
+	shape := ort.NewShape(1, 3, nsfw.ModelInputSize, nsfw.ModelInputSize)
 
 	inputTensor, err := ort.NewTensor(shape, input)
 	if err != nil {
@@ -261,18 +235,6 @@ func hashModel(path string) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(h.Sum(nil))[:16], nil
-}
-
-// nhwcToNCHW converts a flattened NHWC tensor to NCHW.
-func nhwcToNCHW(in []float32) []float32 {
-	const spatial = nsfw.ModelInputSize * nsfw.ModelInputSize
-	out := make([]float32, len(in))
-	for i := 0; i < spatial; i++ {
-		out[i] = in[i*3]
-		out[spatial+i] = in[i*3+1]
-		out[2*spatial+i] = in[i*3+2]
-	}
-	return out
 }
 
 var _ nsfw.Classifier = (*Classifier)(nil)

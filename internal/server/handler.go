@@ -78,7 +78,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if p.NSFWJS && !h.nsfw.available() {
+	if p.NSFW && !h.nsfw.available() {
 		h.writeNSFWError(w, log, ErrNSFWUnavailable)
 		return
 	}
@@ -93,12 +93,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	var preds *nsfw.Predictions
 	predsOK := false
-	if p.NSFWJS {
+	if p.NSFW {
 		preds, predsOK = h.nsfw.Lookup(p.URL)
 	}
 
-	// Unchanged fast path: processed cache hit without nsfwjs.
-	if cachedEntry != nil && !p.NSFWJS {
+	// Unchanged fast path: processed cache hit without nsfw.
+	if cachedEntry != nil && !p.NSFW {
 		w.Header().Set("Content-Type", cachedEntry.ContentType)
 		w.Header().Set("Cache-Control", cacheControl)
 		w.Header().Set("X-Processor", processorName)
@@ -107,18 +107,18 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Processed image is cached but nsfwjs was requested.
+	// Processed image is cached but nsfw was requested.
 	if cachedEntry != nil {
 		meta, err := processor.ProbeImageMetadata(cachedEntry.Buffer, log)
 		if err != nil {
-			h.writeNSFWError(w, log, fmt.Errorf("nsfwjs: probe cached image: %w", err))
+			h.writeNSFWError(w, log, fmt.Errorf("nsfw: probe cached image: %w", err))
 			return
 		}
 
 		if !predsOK {
 			source, _, err := h.fetchSource(p, isVideo, log)
 			if err != nil {
-				h.writeNSFWError(w, log, fmt.Errorf("nsfwjs: fetch source: %w", err))
+				h.writeNSFWError(w, log, fmt.Errorf("nsfw: fetch source: %w", err))
 				return
 			}
 			preds, err = h.nsfw.ClassifySource(r.Context(), p.URL, source)
@@ -131,7 +131,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		body, err := buildNSFWImageResponse(cachedEntry.Buffer, cachedEntry.ContentType,
 			meta.Format, meta.Width, meta.Height, preds)
 		if err != nil {
-			h.writeNSFWError(w, log, fmt.Errorf("nsfwjs: encode response: %w", err))
+			h.writeNSFWError(w, log, fmt.Errorf("nsfw: encode response: %w", err))
 			return
 		}
 		h.writeNSFWImage(w, body, meta.Width, meta.Height, meta.Format, len(cachedEntry.Buffer), true, "")
@@ -167,7 +167,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		log.Warn("handler: processing failed, returning original", "error", err)
 		procErr := err
 
-		if !p.NSFWJS {
+		if !p.NSFW {
 			w.Header().Set("Content-Type", sourceContentType)
 			w.Header().Set("Cache-Control", cacheControl)
 			w.Header().Set("X-Processor", processorName)
@@ -186,13 +186,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		meta, metaErr := processor.ProbeImageMetadata(sourceBuffer, log)
 		if metaErr != nil {
-			h.writeNSFWError(w, log, fmt.Errorf("nsfwjs: probe original: %w", metaErr))
+			h.writeNSFWError(w, log, fmt.Errorf("nsfw: probe original: %w", metaErr))
 			return
 		}
 		body, encodeErr := buildNSFWImageResponse(sourceBuffer, sourceContentType,
 			meta.Format, meta.Width, meta.Height, preds)
 		if encodeErr != nil {
-			h.writeNSFWError(w, log, fmt.Errorf("nsfwjs: encode response: %w", encodeErr))
+			h.writeNSFWError(w, log, fmt.Errorf("nsfw: encode response: %w", encodeErr))
 			return
 		}
 		h.writeNSFWImage(w, body, meta.Width, meta.Height, meta.Format, len(sourceBuffer), false, procErr.Error())
@@ -212,7 +212,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	if !p.NSFWJS {
+	if !p.NSFW {
 		w.Header().Set("Content-Type", outputContentType)
 		w.Header().Set("Cache-Control", cacheControl)
 		w.Header().Set("X-Processor", processorName)
@@ -235,7 +235,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	body, err := buildNSFWImageResponse(result.Buffer, outputContentType,
 		result.Format, result.Width, result.Height, preds)
 	if err != nil {
-		h.writeNSFWError(w, log, fmt.Errorf("nsfwjs: encode response: %w", err))
+		h.writeNSFWError(w, log, fmt.Errorf("nsfw: encode response: %w", err))
 		return
 	}
 	h.writeNSFWImage(w, body, result.Width, result.Height, result.Format, len(result.Buffer), false, "")
@@ -296,7 +296,7 @@ func (h *Handler) writeNSFWError(w http.ResponseWriter, log *slog.Logger, err er
 	if errors.Is(err, ErrNSFWUnavailable) {
 		sendJSON(w, http.StatusServiceUnavailable, map[string]string{
 			"error":   "Service Unavailable",
-			"details": "nsfwjs classifier is not available",
+			"details": "nsfw classifier is not available",
 		})
 		return
 	}

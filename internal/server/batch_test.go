@@ -80,7 +80,7 @@ func (e *batchEnv) do(t *testing.T, items []batchRequestItem) map[string]decoded
 }
 
 func nsfwParams() map[string]interface{} {
-	return map[string]interface{}{"format": "png", "nsfwjs": "true"}
+	return map[string]interface{}{"format": "png", "nsfw": "true"}
 }
 
 // post sends the items and returns the raw recorder so tests can assert on
@@ -129,7 +129,7 @@ func TestBatchNSFWData(t *testing.T) {
 	if _, err := base64.StdEncoding.DecodeString(data.Base64); err != nil {
 		t.Fatalf("base64: %v", err)
 	}
-	if data.NSFW == nil || data.NSFW.Neutral != 0.91 {
+	if data.NSFW == nil || data.NSFW.Safe != 0.91 {
 		t.Fatalf("nsfw = %+v", data.NSFW)
 	}
 	if fake.Calls() != 1 {
@@ -167,17 +167,17 @@ func TestBatchNSFWPartialFailure(t *testing.T) {
 	})
 
 	if resp["with"].Success {
-		t.Fatal("item that requested nsfwjs should fail")
+		t.Fatal("item that requested nsfw should fail")
 	}
 	if len(resp["with"].Error) == 0 {
-		t.Fatal("missing error for nsfwjs item")
+		t.Fatal("missing error for nsfw item")
 	}
-	if !bytes.Contains([]byte(resp["with"].Error), []byte("nsfwjs:")) {
-		t.Fatalf("error = %q, want nsfwjs: prefix", resp["with"].Error)
+	if !bytes.Contains([]byte(resp["with"].Error), []byte("nsfw:")) {
+		t.Fatalf("error = %q, want nsfw: prefix", resp["with"].Error)
 	}
 
 	if !resp["without"].Success {
-		t.Fatalf("item that did not request nsfwjs failed: %s", resp["without"].Error)
+		t.Fatalf("item that did not request nsfw failed: %s", resp["without"].Error)
 	}
 }
 
@@ -252,8 +252,8 @@ func TestBatchNSFWClassifierUnavailableSkipsSource(t *testing.T) {
 	if resp["a"].Success {
 		t.Fatal("nsfw item should fail when the classifier is unavailable")
 	}
-	if !strings.Contains(resp["a"].Error, "nsfwjs:") {
-		t.Fatalf("error = %q, want nsfwjs: prefix", resp["a"].Error)
+	if !strings.Contains(resp["a"].Error, "nsfw:") {
+		t.Fatalf("error = %q, want nsfw: prefix", resp["a"].Error)
 	}
 	if !resp["b"].Success {
 		t.Fatalf("non-nsfw item failed: %s", resp["b"].Error)

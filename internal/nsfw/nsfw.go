@@ -1,6 +1,6 @@
 // Package nsfw contains the pure-Go parts of the optional NSFW classification
-// feature: the classifier interface, the nsfwjs output mapping, and the
-// alignCorners preprocessing used by nsfwjs.
+// feature: the classifier interface, output mapping, and EfficientNet-B4
+// preprocessing.
 package nsfw
 
 import (
@@ -9,15 +9,16 @@ import (
 	"math"
 )
 
-// ModelInputSize is the fixed spatial input size expected by the nsfwjs
-// MobileNetV2 model (224x224).
-const ModelInputSize = 224
+// ModelInputSize is the fixed spatial input size expected by the
+// nsfw-detection-2-mini EfficientNet-B4 model (380x380).
+const ModelInputSize = 380
 
-// Predictions holds the five nsfwjs class scores.
+// Predictions holds the five class scores in the model's id2label order:
+// safe, hentai, porn, sexy, drawing.
 type Predictions struct {
 	Drawing float32 `json:"drawing"`
 	Hentai  float32 `json:"hentai"`
-	Neutral float32 `json:"neutral"`
+	Safe    float32 `json:"safe"`
 	Porn    float32 `json:"porn"`
 	Sexy    float32 `json:"sexy"`
 	IsNsfw  bool    `json:"isNsfw"`
@@ -64,41 +65,27 @@ func ApplySoftmax(logits []float32) []float32 {
 
 // PredictionsFromOutput maps the 5-element model output to Predictions.
 //
-// The nsfwjs ONNX model already ends in a softmax layer, but a different
-// conversion could emit logits; if the values do not look like probabilities
-// a softmax is applied first.
-func PredictionsFromOutput(probs []float32, threshold float32) (*Predictions, error) {
-	if len(probs) != 5 {
-		return nil, fmt.Errorf("expected 5 output values, got %d", len(probs))
+// The ONNX export emits raw logits, so a numerically stable softmax is always
+// applied before mapping.
+func PredictionsFromOutput(logits []float32, threshold float32) (*Predictions, error) {
+	if len(logits) != 5 {
+		return nil, fmt.Errorf("expected 5 output values, got %d", len(logits))
 	}
 
-	var sum float64
-	needsSoftmax := false
-	for _, v := range probs {
-		f := float64(v)
-		if math.IsNaN(f) || math.IsInf(f, 0) {
+	for _, v := range logits {
+		if math.IsNaN(float64(v)) || math.IsInf(float64(v), 0) {
 			return nil, fmt.Errorf("output contains a non-finite value")
 		}
-		if v < 0 || v > 1 {
-			needsSoftmax = true
-		}
-		sum += f
-	}
-	if math.Abs(sum-1) > 1e-3 {
-		needsSoftmax = true
 	}
 
-	values := probs
-	if needsSoftmax {
-		values = ApplySoftmax(probs)
-	}
+	values := ApplySoftmax(logits)
 
 	p := &Predictions{
-		Drawing: values[0],
+		Safe:    values[0],
 		Hentai:  values[1],
-		Neutral: values[2],
-		Porn:    values[3],
-		Sexy:    values[4],
+		Porn:    values[2],
+		Sexy:    values[3],
+		Drawing: values[4],
 	}
 	p.IsNsfw = p.Hentai+p.Porn+p.Sexy >= threshold
 	return p, nil

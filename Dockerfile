@@ -36,7 +36,6 @@ COPY --from=builder /app/edge-image /app/edge-image
 COPY public /app/public
 
 COPY --from=onnxruntime /ort/onnxruntime/capi/ /opt/onnxruntime/
-COPY models /app/models
 
 RUN mkdir -p /data
 
@@ -46,7 +45,7 @@ ENV PUBLIC_DIR=/app/public
 ENV GOMEMLIMIT=10GiB
 ENV ONNXRUNTIME_LIB_PATH=/opt/onnxruntime/libonnxruntime.so.1.31.0
 ENV LD_LIBRARY_PATH=/opt/onnxruntime
-ENV NSFW_MODEL_PATH=/app/models/nsfwjs_mobilenet_v2.onnx
+ENV NSFW_MODEL_PATH=/data/models/nsfw_detection_2_mini.onnx
 
 EXPOSE 3000
 

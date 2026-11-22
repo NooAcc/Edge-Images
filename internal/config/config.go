@@ -13,10 +13,10 @@ type CacheConfig struct {
 	MaxDiskGB   int
 }
 
-// NSFWConfig configures the optional built-in nsfwjs classifier.
+// NSFWConfig configures the optional built-in NSFW classifier.
 //
 // A non-empty DisabledReason means the classifier must not be initialized
-// (requests that ask for nsfwjs then receive 503).
+// (requests that ask for NSFW classification then receive 503).
 type NSFWConfig struct {
 	ModelPath          string
 	ORTLibPath         string
@@ -44,7 +44,7 @@ var presets = map[string]PlatformConfig{
 			MaxDiskGB:   50,
 		},
 		NSFW: NSFWConfig{
-			ModelPath:   "models/nsfwjs_mobilenet_v2.onnx",
+			ModelPath:   "/data/models/nsfw_detection_2_mini.onnx",
 			Threshold:   0.5,
 			Concurrency: 2,
 		},

@@ -10,8 +10,7 @@ import (
 // RGB bytes (no alpha) plus the image dimensions.
 //
 // It applies EXIF auto-rotation and converts to sRGB, matching what a browser
-// would show. Scaling is intentionally left to nsfw.PreprocessRGB, which
-// implements nsfwjs's alignCorners sampling.
+// would show. Resizing is done by nsfw.PreprocessRGB.
 func PrepareNSFWInput(source []byte) (rgb []byte, width, height int, err error) {
 	img, err := vips.NewImageFromBuffer(source)
 	if err != nil {

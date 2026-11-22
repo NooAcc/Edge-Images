@@ -69,7 +69,7 @@ func (f *fakeClassifier) Calls() int {
 
 func testPreds() *nsfw.Predictions {
 	return &nsfw.Predictions{
-		Drawing: 0.02, Hentai: 0.01, Neutral: 0.91, Porn: 0.03, Sexy: 0.03, IsNsfw: false,
+		Drawing: 0.02, Hentai: 0.01, Safe: 0.91, Porn: 0.03, Sexy: 0.03, IsNsfw: false,
 	}
 }
 
@@ -96,7 +96,7 @@ func TestNSFWServiceClassifiesAndCaches(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.Neutral != 0.91 {
+	if first.Safe != 0.91 {
 		t.Fatalf("first = %+v", first)
 	}
 	if fake.Calls() != 1 {
@@ -107,7 +107,7 @@ func TestNSFWServiceClassifiesAndCaches(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if second.Neutral != first.Neutral {
+	if second.Safe != first.Safe {
 		t.Fatalf("second = %+v, want %+v", second, first)
 	}
 	if fake.Calls() != 1 {
@@ -143,8 +143,8 @@ func TestNSFWServiceClassifierError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !errors.Is(err, ErrNSFWUnavailable) && !bytes.Contains([]byte(err.Error()), []byte("nsfwjs:")) {
-		t.Fatalf("err = %q, want nsfwjs: prefix", err)
+	if !errors.Is(err, ErrNSFWUnavailable) && !bytes.Contains([]byte(err.Error()), []byte("nsfw:")) {
+		t.Fatalf("err = %q, want nsfw: prefix", err)
 	}
 }
 
@@ -164,7 +164,7 @@ func TestNSFWServiceCachedLookup(t *testing.T) {
 	if !ok {
 		t.Fatal("Lookup missed")
 	}
-	if got.Neutral != 0.91 {
+	if got.Safe != 0.91 {
 		t.Fatalf("got = %+v", got)
 	}
 }
@@ -192,7 +192,7 @@ func TestBuildNSFWImageResponse(t *testing.T) {
 	if !bytes.Equal(decoded, buffer) {
 		t.Fatalf("decoded = %q", decoded)
 	}
-	if resp.NSFW == nil || resp.NSFW.Neutral != 0.91 {
+	if resp.NSFW == nil || resp.NSFW.Safe != 0.91 {
 		t.Fatalf("nsfw = %+v", resp.NSFW)
 	}
 }

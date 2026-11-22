@@ -12,3 +12,5 @@ tests
 docker-compose*.yml
 LICENSE
 docs/
+
+models/*.onnx

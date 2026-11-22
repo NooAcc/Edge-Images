@@ -269,10 +269,10 @@ func (r *batchRunner) process(ctx context.Context, items []batchRequestItem, log
 
 		// Fail fast instead of downloading/processing a source that can never
 		// be classified.
-		if p.NSFWJS && !r.nsfw.available() {
+		if p.NSFW && !r.nsfw.available() {
 			setResponse(item.UUID, batchResponseItem{
 				Success: false,
-				Error:   "nsfwjs: classifier is not available",
+				Error:   "nsfw: classifier is not available",
 			})
 			continue
 		}
@@ -286,16 +286,16 @@ func (r *batchRunner) process(ctx context.Context, items []batchRequestItem, log
 
 		var preds *nsfw.Predictions
 		nsfwOK := false
-		if p.NSFWJS {
+		if p.NSFW {
 			preds, nsfwOK = r.nsfw.Lookup(p.URL)
 			if nsfwOK {
 				nsfwResults[p.URL] = preds
 			}
 		}
 
-		if cachedImage != nil && (!p.NSFWJS || nsfwOK) {
+		if cachedImage != nil && (!p.NSFW || nsfwOK) {
 			var attached *nsfw.Predictions
-			if p.NSFWJS {
+			if p.NSFW {
 				attached = preds
 			}
 			setResponse(item.UUID, batchResponseItem{
@@ -399,7 +399,7 @@ func (r *batchRunner) process(ctx context.Context, items []batchRequestItem, log
 	// ---- phase 1b: classify each URL at most once ----
 	classified := make(map[string]bool)
 	for _, item := range pending {
-		if !item.params.NSFWJS {
+		if !item.params.NSFW {
 			continue
 		}
 		url := item.params.URL
@@ -445,7 +445,7 @@ func (r *batchRunner) process(ctx context.Context, items []batchRequestItem, log
 					return
 				}
 				if !hasPreds || preds == nil {
-					setResponse(item.uuid, batchResponseItem{Success: false, Error: "nsfwjs: prediction unavailable"})
+					setResponse(item.uuid, batchResponseItem{Success: false, Error: "nsfw: prediction unavailable"})
 					return
 				}
 				setResponse(item.uuid, batchResponseItem{
@@ -501,13 +501,13 @@ func (r *batchRunner) process(ctx context.Context, items []batchRequestItem, log
 			}
 
 			var attached *nsfw.Predictions
-			if p.NSFWJS {
+			if p.NSFW {
 				if nsfwErr != nil {
 					setResponse(item.uuid, batchResponseItem{Success: false, Error: nsfwItemError(nsfwErr)})
 					return
 				}
 				if !hasPreds || preds == nil {
-					setResponse(item.uuid, batchResponseItem{Success: false, Error: "nsfwjs: prediction unavailable"})
+					setResponse(item.uuid, batchResponseItem{Success: false, Error: "nsfw: prediction unavailable"})
 					return
 				}
 				attached = preds
@@ -529,16 +529,16 @@ func (r *batchRunner) process(ctx context.Context, items []batchRequestItem, log
 }
 
 // nsfwItemError renders a classification error for a batch item, always with
-// the "nsfwjs:" prefix required by the API contract.
+// the "nsfw:" prefix required by the API contract.
 func nsfwItemError(err error) string {
 	if errors.Is(err, ErrNSFWUnavailable) {
-		return "nsfwjs: classifier is not available"
+		return "nsfw: classifier is not available"
 	}
 	msg := err.Error()
-	if strings.HasPrefix(msg, "nsfwjs:") {
+	if strings.HasPrefix(msg, "nsfw:") {
 		return msg
 	}
-	return "nsfwjs: " + msg
+	return "nsfw: " + msg
 }
 
 func (r *batchRunner) handleMetadata(p *params.Params, isVideo bool, log *slog.Logger) (interface{}, error) {

@@ -70,7 +70,7 @@ func main() {
 			Concurrency: cfg.NSFW.Concurrency,
 		}, log)
 		if err != nil {
-			log.Error("nsfw: classifier init failed; nsfwjs requests will return 503", "error", err)
+			log.Error("nsfw: classifier init failed; nsfw requests will return 503", "error", err)
 		} else {
 			classifier = cl
 			// LIFO: Close runs before Shutdown, which releases the ORT environment.
