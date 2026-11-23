@@ -3,274 +3,1101 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Edge Image</title>
+    <title>Edge Image API — 媒体处理接口文档</title>
     <meta
       name="description"
-      content="动态媒体处理服务，支持图片处理和视频封面提取。"
+      content="Edge Image API 参考文档：图片缩放、裁剪、格式转换、视频封面提取、元信息查询、批量处理与 NSFW 分类。"
     />
-    <link rel="stylesheet" href="/styles.css" />
-    <style>
-      .shell {
-        width: min(1120px, calc(100% - 32px));
-      }
-
-      .hero {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(320px, 440px);
-        gap: 36px;
-        align-items: center;
-      }
-
-      .eyebrow {
-        margin: 0 0 12px;
-        color: var(--accent-dark);
-        font-size: 14px;
-        font-weight: 700;
-      }
-
-      h1 {
-        max-width: 680px;
-        font-size: clamp(32px, 6vw, 56px);
-      }
-
-      .lead {
-        max-width: 580px;
-        margin: 20px 0 0;
-      }
-
-      .actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 12px;
-        margin-top: 24px;
-      }
-
-      .button {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 42px;
-        padding: 0 16px;
-        border: 1px solid var(--accent);
-        border-radius: 8px;
-        background: var(--accent);
-        color: #ffffff;
-        font-weight: 700;
-        text-decoration: none;
-      }
-
-      .button.secondary {
-        background: #ffffff;
-        color: var(--accent-dark);
-      }
-
-      .preview {
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: var(--panel);
-        overflow: hidden;
-        box-shadow: 0 12px 32px rgba(31, 41, 51, 0.08);
-      }
-
-      .preview-media {
-        aspect-ratio: 16 / 9;
-        background:
-          linear-gradient(135deg, rgba(8, 127, 140, 0.12), rgba(240, 99, 56, 0.08)),
-          repeating-conic-gradient(#dce6ee 0% 25%, #ffffff 0% 50%) 50% / 24px 24px;
-        display: grid;
-        place-items: center;
-      }
-
-      .preview-media::before {
-        content: '📷';
-        font-size: 48px;
-      }
-
-      .preview-bar {
-        padding: 14px 16px;
-        border-top: 1px solid var(--line);
-        background: #fafbfc;
-        font-size: 13px;
-        color: var(--muted);
-        text-align: center;
-      }
-
-      @media (max-width: 768px) {
-        .hero {
-          grid-template-columns: 1fr;
+    <meta name="theme-color" content="#020617" />
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem('edge-image-theme');
+          var theme =
+            saved ||
+            (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+          document.documentElement.setAttribute('data-theme', theme);
+        } catch (e) {
+          document.documentElement.setAttribute('data-theme', 'light');
         }
-      }
-    </style>
+      })();
+    </script>
+    <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <header>
-      <div class="shell nav">
-        <div class="brand">
-          <span class="mark">I</span>
-          <span>Edge Image</span>
-        </div>
-        <nav aria-label="页面导航">
-          <a href="#features">功能</a>
-          <a href="/images.html">图片处理</a>
-          <a href="/videos.html">视频处理</a>
-          <a href="/batch.html">批量处理</a>
-          <a href="/api.html">API</a>
-        </nav>
-      </div>
+    <a class="skip-link" href="#main">跳到正文</a>
+
+    <!-- Icon sprite (Lucide-style, inline to avoid extra requests) -->
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true" focusable="false">
+      <defs>
+        <symbol id="i-image" viewBox="0 0 24 24">
+          <rect x="3" y="3" width="18" height="18" rx="2" />
+          <circle cx="9" cy="9" r="2" />
+          <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+        </symbol>
+        <symbol id="i-video" viewBox="0 0 24 24">
+          <path d="m22 8-6 4 6 4V8Z" />
+          <rect x="2" y="6" width="14" height="12" rx="2" />
+        </symbol>
+        <symbol id="i-layers" viewBox="0 0 24 24">
+          <path d="m12 2 9 5-9 5-9-5 9-5Z" />
+          <path d="m3 12 9 5 9-5" />
+          <path d="m3 17 9 5 9-5" />
+        </symbol>
+        <symbol id="i-shield" viewBox="0 0 24 24">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
+        </symbol>
+        <symbol id="i-zap" viewBox="0 0 24 24">
+          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+        </symbol>
+        <symbol id="i-code" viewBox="0 0 24 24">
+          <polyline points="16 18 22 12 16 6" />
+          <polyline points="8 6 2 12 8 18" />
+        </symbol>
+        <symbol id="i-globe" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M2 12h20" />
+          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10Z" />
+        </symbol>
+        <symbol id="i-clock" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="10" />
+          <polyline points="12 6 12 12 16 14" />
+        </symbol>
+        <symbol id="i-copy" viewBox="0 0 24 24">
+          <rect x="9" y="9" width="13" height="13" rx="2" />
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+        </symbol>
+        <symbol id="i-sun" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="4" />
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+        </symbol>
+        <symbol id="i-moon" viewBox="0 0 24 24">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" />
+        </symbol>
+        <symbol id="i-menu" viewBox="0 0 24 24">
+          <line x1="4" y1="6" x2="20" y2="6" />
+          <line x1="4" y1="12" x2="20" y2="12" />
+          <line x1="4" y1="18" x2="20" y2="18" />
+        </symbol>
+        <symbol id="i-search" viewBox="0 0 24 24">
+          <circle cx="11" cy="11" r="8" />
+          <line x1="21" y1="21" x2="16.65" y2="16.65" />
+        </symbol>
+        <symbol id="i-check" viewBox="0 0 24 24">
+          <path d="M20 6 9 17l-5-5" />
+        </symbol>
+        <symbol id="i-alert" viewBox="0 0 24 24">
+          <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+          <line x1="12" y1="9" x2="12" y2="13" />
+          <line x1="12" y1="17" x2="12.01" y2="17" />
+        </symbol>
+        <symbol id="i-info" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="10" />
+          <line x1="12" y1="16" x2="12" y2="12" />
+          <line x1="12" y1="8" x2="12.01" y2="8" />
+        </symbol>
+        <symbol id="i-x" viewBox="0 0 24 24">
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </symbol>
+        <symbol id="i-terminal" viewBox="0 0 24 24">
+          <polyline points="4 17 10 11 4 5" />
+          <line x1="12" y1="19" x2="20" y2="19" />
+        </symbol>
+        <symbol id="i-file" viewBox="0 0 24 24">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+          <path d="M14 2v6h6" />
+          <path d="M9 13h6M9 17h4" />
+        </symbol>
+        <symbol id="i-arrow" viewBox="0 0 24 24">
+          <path d="M7 17 17 7M7 7h10v10" />
+        </symbol>
+      </defs>
+    </svg>
+
+    <header class="topbar">
+      <button
+        class="icon-btn menu-btn"
+        id="menu-toggle"
+        type="button"
+        aria-label="打开导航"
+        aria-controls="sidebar"
+        aria-expanded="false"
+      >
+        <svg class="icon" aria-hidden="true"><use href="#i-menu"></use></svg>
+      </button>
+
+      <a class="brand" href="/">
+        <span class="brand-mark"><svg class="icon" aria-hidden="true"><use href="#i-image"></use></svg></span>
+        <span>Edge Image</span>
+        <span class="brand-tag">API v1</span>
+      </a>
+
+      <div class="topbar-spacer"></div>
+
+      <span class="topbar-status"><span class="dot"></span>无需鉴权 · JSON / 二进制</span>
+
+      <button
+        class="icon-btn theme-toggle"
+        id="theme-toggle"
+        type="button"
+        aria-label="切换主题"
+        aria-pressed="false"
+        title="切换主题"
+      >
+        <svg class="icon icon-sun" aria-hidden="true"><use href="#i-sun"></use></svg>
+        <svg class="icon icon-moon" aria-hidden="true"><use href="#i-moon"></use></svg>
+      </button>
     </header>
 
-    <main class="shell">
-      <section class="hero" aria-labelledby="page-title">
-        <div>
-          <p class="eyebrow">Go 媒体处理服务</p>
-          <h1 id="page-title">动态媒体处理服务</h1>
-          <p class="lead">
-            传入远程图片或视频 URL，自动完成缩放、裁剪、格式转换。支持 HuggingFace Spaces 和 Docker 部署，根据平台自动优化参数和缓存策略。
-          </p>
-          <div class="actions">
-            <a class="button" href="/images.html">开始使用</a>
-            <a class="button secondary" href="/api.html">查看文档</a>
+    <button class="scrim" id="scrim" type="button" aria-label="关闭导航" hidden></button>
+
+    <div class="layout">
+      <aside class="sidebar" id="sidebar" aria-label="文档导航">
+        <div class="sidebar-inner">
+          <div class="sidebar-search">
+            <svg class="icon icon-search" aria-hidden="true"><use href="#i-search"></use></svg>
+            <input
+              id="doc-search"
+              type="search"
+              placeholder="搜索文档…"
+              aria-label="搜索文档"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <kbd aria-hidden="true">/</kbd>
+          </div>
+
+          <nav class="sidebar-nav">
+            <div class="nav-group">
+              <p class="nav-group-title">开始</p>
+              <ul>
+                <li><a href="#overview" data-keywords="overview 概览 架构 接入">概览与接入</a></li>
+                <li><a href="#quickstart" data-keywords="quickstart 快速开始 curl html javascript">快速开始</a></li>
+              </ul>
+            </div>
+
+            <div class="nav-group">
+              <p class="nav-group-title">接口</p>
+              <ul>
+                <li><a href="#single-image" data-keywords="单图 图片 处理 media get">单图处理</a></li>
+                <li><a href="#metadata" data-keywords="元信息 metadata json 尺寸 格式">元信息查询</a></li>
+                <li><a href="#video" data-keywords="视频 封面 mp4 webm 首帧">视频封面</a></li>
+                <li><a href="#nsfw" data-keywords="nsfw 分类 内容 安全 审核">NSFW 分类</a></li>
+                <li><a href="#batch" data-keywords="批量 batch 同步 多图">同步批量</a></li>
+                <li><a href="#async-batch" data-keywords="异步 async 回调 callback 批量">异步批量</a></li>
+              </ul>
+            </div>
+
+            <div class="nav-group">
+              <p class="nav-group-title">参考</p>
+              <ul>
+                <li><a href="#responses" data-keywords="响应 响应头 缓存 cache headers">响应与缓存</a></li>
+                <li><a href="#errors" data-keywords="错误 状态码 error 400 502 503">错误处理</a></li>
+                <li><a href="#allowlist" data-keywords="白名单 allowlist 域名 安全">域名白名单</a></li>
+                <li><a href="#environment" data-keywords="环境变量 env 配置 部署">环境变量</a></li>
+              </ul>
+            </div>
+          </nav>
+
+          <p class="sidebar-empty" id="search-empty" hidden>没有匹配的文档条目</p>
+
+          <div class="sidebar-foot">
+            <span>API v1</span>
+            <a href="/healthz" target="_blank" rel="noopener">健康检查</a>
           </div>
         </div>
+      </aside>
 
-        <div class="preview" aria-label="媒体处理预览示意">
-          <div class="preview-media"></div>
-          <div class="preview-bar">WebP / JPEG / PNG / AVIF</div>
-        </div>
-      </section>
+      <main class="content" id="main" tabindex="-1">
+        <div class="content-inner">
+          <article>
+            <header class="hero">
+              <p class="eyebrow"><span class="dot"></span>API Reference · v1</p>
+              <h1>Edge Image API</h1>
+              <p class="lead">
+                面向图片与视频的即时处理服务。把远程媒体地址和参数拼进 URL，即可完成缩放、裁剪、格式转换、视频封面提取与
+                NSFW 分类——处理结果可以直接用作 <code>&lt;img&gt;</code> 的 <code>src</code>。
+              </p>
+              <ul class="meta-chips">
+                <li class="chip"><svg class="icon" aria-hidden="true"><use href="#i-globe"></use></svg>Base URL <code>https://your-domain.com</code></li>
+                <li class="chip"><svg class="icon" aria-hidden="true"><use href="#i-shield"></use></svg>无需鉴权</li>
+                <li class="chip"><svg class="icon" aria-hidden="true"><use href="#i-code"></use></svg>REST · JSON / 二进制</li>
+                <li class="chip"><svg class="icon" aria-hidden="true"><use href="#i-zap"></use></svg>CDN 缓存 1 年</li>
+              </ul>
 
-      <section id="features" aria-labelledby="features-title">
-        <h2 id="features-title">核心功能</h2>
-        <div class="grid">
-          <article class="card">
-            <h3>图片处理</h3>
-            <p>支持缩放、裁剪、旋转、翻转，输出 WebP/JPEG/PNG/AVIF</p>
-          </article>
-          <article class="card">
-            <h3>批量处理</h3>
-            <p>两阶段队列：先并发下载源媒体，再限流处理。支持同步（最多 20 张）和异步回调（最多 50 张）两种模式</p>
-          </article>
-          <article class="card">
-            <h3>视频封面</h3>
-            <p>自动提取 MP4/WebM 视频首帧作为封面图</p>
-          </article>
-          <article class="card">
-            <h3>平台感知</h3>
-            <p>根据部署平台自动调整参数上限和缓存策略</p>
-          </article>
-          <article class="card">
-            <h3>两级缓存</h3>
-            <p>Docker 部署自动启用 ristretto 内存 + 文件系统磁盘缓存，减少重复处理</p>
-          </article>
-          <article class="card">
-            <h3>元信息查询</h3>
-            <p>获取图片或视频的分辨率、大小等详细信息</p>
-          </article>
-          <article class="card">
-            <h3>安全控制</h3>
-            <p>支持源媒体域名白名单，防止滥用</p>
-          </article>
-        </div>
-      </section>
+              <ul class="endpoint-grid">
+                <li>
+                  <a class="endpoint-card" href="#single-image">
+                    <span class="endpoint-card-top">
+                      <span class="method method-get">GET</span>
+                      <h3>/api/media/&lt;url&gt;</h3>
+                    </span>
+                    <p>处理单张图片或提取视频封面，返回图片二进制。</p>
+                    <span class="endpoint-card-limit">尺寸上限 2048 px</span>
+                  </a>
+                </li>
+                <li>
+                  <a class="endpoint-card" href="#batch">
+                    <span class="endpoint-card-top">
+                      <span class="method method-post">POST</span>
+                      <h3>/api/batch</h3>
+                    </span>
+                    <p>一次同步处理多张图片，逐项返回结果。</p>
+                    <span class="endpoint-card-limit">最多 20 项 · 请求体 256 MB</span>
+                  </a>
+                </li>
+                <li>
+                  <a class="endpoint-card" href="#async-batch">
+                    <span class="endpoint-card-top">
+                      <span class="method method-post">POST</span>
+                      <h3>/api/batch/async</h3>
+                    </span>
+                    <p>接受大批量任务，完成后通过 callbackUrl 回调。</p>
+                    <span class="endpoint-card-limit">最多 50 项 · 202 Accepted</span>
+                  </a>
+                </li>
+              </ul>
+            </header>
 
-      <section id="usage" aria-labelledby="usage-title">
-        <h2 id="usage-title">快速调用</h2>
-        <h3 style="margin: 16px 0 8px; font-size: 16px;">单图处理</h3>
-        <div class="endpoint">
-          <code id="example-url"
-            >/api/media/https%3A%2F%2Fexample.com%2Fmedia.jpg?width=800&amp;height=600&amp;crop=centre</code
-          >
-          <button class="copy" type="button" data-copy="#example-url">复制</button>
-        </div>
-        <p style="margin-top: 14px; color: var(--muted)">
-          源地址需要 URL 编码，直接放入 <code>&lt;img&gt;</code> 的 <code>src</code> 属性即可使用。
-        </p>
-        <h3 style="margin: 24px 0 8px; font-size: 16px;">同步批量 <span style="font-size: 12px; color: var(--muted);">（最多 20 张）</span></h3>
-        <div class="endpoint">
-          <code id="example-batch">POST /api/batch</code>
-          <button class="copy" type="button" data-copy="#example-batch-req">复制</button>
-        </div>
-        <pre id="example-batch-req" style="margin-top: 8px; padding: 12px; background: var(--code); color: #e9f1f7; border-radius: 8px; font-size: 13px; overflow-x: auto;">curl -X POST /api/batch \
+            <!-- ============================ 概览 ============================ -->
+            <section class="doc-section" id="overview">
+              <h2>概览与接入</h2>
+              <p class="section-lead">
+                服务本身不存储你的媒体，每次请求都会按需下载源文件、执行处理，并返回可直接缓存的响应。三个接口共享同一套查询参数。
+              </p>
+
+              <ol class="steps">
+                <li>
+                  <h3>传入源地址</h3>
+                  <p>把完整的 http/https 媒体地址编码后放在路径里，或使用批量接口提交多个地址与内联图片。</p>
+                </li>
+                <li>
+                  <h3>服务端处理</h3>
+                  <p>下载源文件（带重试与超时保护），按参数缩放、裁剪、旋转、翻转并重新编码。</p>
+                </li>
+                <li>
+                  <h3>缓存并返回</h3>
+                  <p>结果写入内存与磁盘缓存，并带 1 年 immutable 缓存头，可直接交给 CDN 与浏览器。</p>
+                </li>
+              </ol>
+
+              <ul class="feature-grid">
+                <li>
+                  <svg class="icon" aria-hidden="true"><use href="#i-image"></use></svg>
+                  <h3>图片变换</h3>
+                  <p>等比缩放、居中/智能/熵裁剪、旋转、翻转与背景填充，全部通过查询参数控制。</p>
+                </li>
+                <li>
+                  <svg class="icon" aria-hidden="true"><use href="#i-file"></use></svg>
+                  <h3>多格式输出</h3>
+                  <p>WebP、JPEG、PNG、AVIF 输出，质量 1–100 可调；<code>format=json</code> 改为返回元信息。</p>
+                </li>
+                <li>
+                  <svg class="icon" aria-hidden="true"><use href="#i-video"></use></svg>
+                  <h3>视频封面</h3>
+                  <p>自动识别 MP4 / WebM，通过 Range 请求提取首帧，无需下载完整视频。</p>
+                </li>
+                <li>
+                  <svg class="icon" aria-hidden="true"><use href="#i-layers"></use></svg>
+                  <h3>批量与回调</h3>
+                  <p>同步批量最多 20 项；异步批量最多 50 项，处理完成后回调通知，失败自动重试。</p>
+                </li>
+                <li>
+                  <svg class="icon" aria-hidden="true"><use href="#i-shield"></use></svg>
+                  <h3>NSFW 分类</h3>
+                  <p>可选的五分类内容审核，支持单图与批量；分类对象为源图，结果按源地址缓存。</p>
+                </li>
+                <li>
+                  <svg class="icon" aria-hidden="true"><use href="#i-clock"></use></svg>
+                  <h3>两级缓存</h3>
+                  <p>内存 + 文件系统磁盘缓存；处理参数参与缓存键，相同请求不会重复处理。</p>
+                </li>
+              </ul>
+
+              <div class="callout">
+                <svg class="icon" aria-hidden="true"><use href="#i-info"></use></svg>
+                <p>
+                  <span class="callout-title">Base URL</span>
+                  下文示例使用 <code>https://your-domain.com</code>，请替换为你的实际部署域名。服务默认不要求鉴权；
+                  生产环境建议通过
+                  <a href="#allowlist"><code>IMAGE_URL_ALLOWLIST</code></a>
+                  限制可下载的源域名。
+                </p>
+              </div>
+            </section>
+
+            <!-- ============================ 快速开始 ============================ -->
+            <section class="doc-section" id="quickstart">
+              <h2>快速开始</h2>
+              <p class="section-lead">
+                最常用的调用方式是直接拼接 URL。源地址必须整体做 URL 编码，避免其中的 <code>?</code>、<code>&amp;</code>
+                与查询参数混淆。
+              </p>
+
+              <h3>1 · 用 curl 获取一张处理后的图片</h3>
+              <pre class="code" data-lang="bash"><code>curl -sSL "https://your-domain.com/api/media/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=800&amp;height=600&amp;crop=centre" \
+  -o cover.webp</code></pre>
+
+              <h3>2 · 直接嵌入网页</h3>
+              <pre class="code" data-lang="html"><code>&lt;img
+  src="https://your-domain.com/api/media/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=800&amp;height=600&amp;crop=centre"
+  alt="居中裁剪的 800×600 封面"
+  width="800"
+  height="600"
+  loading="lazy"
+&gt;</code></pre>
+
+              <h3>3 · 在前端代码中调用</h3>
+              <pre class="code" data-lang="js"><code>const source = "https://example.com/photo.jpg";
+const path =
+  "/api/media/" +
+  encodeURIComponent(source) +
+  "?width=800&amp;height=600&amp;crop=centre";
+
+const response = await fetch(path);
+const blob = await response.blob();
+document.querySelector("img").src = URL.createObjectURL(blob);</code></pre>
+
+              <div class="callout callout--warn">
+                <svg class="icon" aria-hidden="true"><use href="#i-alert"></use></svg>
+                <p>
+                  <span class="callout-title">务必编码源地址</span>
+                  使用 <code>encodeURIComponent(source)</code>（或后端的对应函数）。直接拼接原始 URL 会让服务端把源地址里的查询参数误当成处理参数。
+                </p>
+              </div>
+            </section>
+
+            <!-- ============================ 单图处理 ============================ -->
+            <section class="doc-section" id="single-image">
+              <h2>单图处理 <span class="method method-get">GET</span></h2>
+              <p class="section-lead">
+                下载远程图片，按查询参数处理后返回二进制图片。请求方法只接受 <code>GET</code>。
+              </p>
+
+              <div class="endpoint">
+                <span class="method method-get">GET</span>
+                <code class="endpoint-path">/api/media/&lt;encoded-source-url&gt;</code>
+                <button class="copy-btn" type="button" data-copy-text="/api/media/{encoded-source-url}">
+                  <svg class="icon" aria-hidden="true"><use href="#i-copy"></use></svg>
+                  <span class="copy-label">复制</span>
+                </button>
+              </div>
+
+              <h3>路径参数</h3>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>参数</th><th>必填</th><th>说明</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td><code>encoded-source-url</code></td>
+                      <td>是</td>
+                      <td>
+                        完整的 <code>http</code> / <code>https</code> 媒体地址，需整体做 URL 编码。服务端解码后校验协议与域名白名单。
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <h3>查询参数</h3>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>参数</th><th>类型</th><th>默认值</th><th>说明</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td><code>width</code></td>
+                      <td>integer</td>
+                      <td>按源图推断</td>
+                      <td>目标宽度（px）。上限由 <code>MAX_DIMENSION</code> 决定（默认 2048），超出会被截断；只传一个维度时另一维按比例推断。</td>
+                    </tr>
+                    <tr>
+                      <td><code>height</code></td>
+                      <td>integer</td>
+                      <td>按源图推断</td>
+                      <td>目标高度（px）。规则与 <code>width</code> 相同。</td>
+                    </tr>
+                    <tr>
+                      <td><code>crop</code></td>
+                      <td>string</td>
+                      <td><code>none</code></td>
+                      <td><code>none</code> · <code>centre</code> · <code>attention</code> · <code>entropy</code>。未知值按 <code>none</code> 处理。</td>
+                    </tr>
+                    <tr>
+                      <td><code>size</code></td>
+                      <td>string</td>
+                      <td><code>both</code></td>
+                      <td><code>both</code> · <code>down</code> · <code>up</code> · <code>force</code>，控制是否允许放大。未知值按 <code>both</code> 处理。</td>
+                    </tr>
+                    <tr>
+                      <td><code>quality</code></td>
+                      <td>integer</td>
+                      <td><code>90</code></td>
+                      <td>输出质量 1–100，越界会被截断。默认值由 <code>DEFAULT_QUALITY</code> 决定。</td>
+                    </tr>
+                    <tr>
+                      <td><code>format</code></td>
+                      <td>string</td>
+                      <td><code>webp</code></td>
+                      <td><code>webp</code> · <code>jpeg</code> · <code>png</code> · <code>avif</code> · <code>json</code>。未知值按 <code>webp</code> 处理。</td>
+                    </tr>
+                    <tr>
+                      <td><code>background</code></td>
+                      <td>string</td>
+                      <td><code>FFFFFF</code></td>
+                      <td>RRGGBB 填充色，仅在 <code>crop=none</code> 且输出区域大于图像时生效。非法值回退为白色。</td>
+                    </tr>
+                    <tr>
+                      <td><code>rotate</code></td>
+                      <td>integer</td>
+                      <td>不旋转</td>
+                      <td><code>90</code> · <code>180</code> · <code>270</code>；其他值忽略。</td>
+                    </tr>
+                    <tr>
+                      <td><code>flip</code></td>
+                      <td>string</td>
+                      <td>不翻转</td>
+                      <td><code>h</code> · <code>v</code> · <code>hv</code>；其他值忽略。</td>
+                    </tr>
+                    <tr>
+                      <td><code>nsfw</code></td>
+                      <td>string</td>
+                      <td>关闭</td>
+                      <td>开启后响应变为 JSON（图片以 base64 返回）。详见 <a href="#nsfw">NSFW 分类</a>。</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <p class="table-note">参数值不合法时多数会被规范化而不是报错；唯一的例外是非法的 <code>nsfw</code> 取值，以及 <code>format=json</code> 与 <code>nsfw</code> 同时开启。</p>
+
+              <h3>请求示例</h3>
+              <pre class="code" data-lang="bash"><code>curl -sSL "https://your-domain.com/api/media/https%3A%2F%2Fexample.com%2Fphoto.jpg?width=800&amp;height=600&amp;crop=centre&amp;format=webp" \
+  -o cover.webp</code></pre>
+
+              <h3>成功响应</h3>
+              <pre class="code" data-lang="http"><code>HTTP/1.1 200 OK
+Content-Type: image/webp
+Cache-Control: public, max-age=31536000, immutable
+X-Processor: edge-image
+X-Image-Width: 800
+X-Image-Height: 600
+X-Image-Format: webp
+X-Image-Size: 45678
+
+[WebP 图片二进制]</code></pre>
+
+              <h3>处理降级</h3>
+              <p class="section-lead" style="margin-bottom: 0">
+                源图可以下载但解码或编码失败时，接口仍返回 <code>200</code>，内容为源图原始字节，并通过 <code>X-Processing-Error</code>
+                标记降级原因。
+              </p>
+              <pre class="code" data-lang="http"><code>HTTP/1.1 200 OK
+Content-Type: image/jpeg
+Cache-Control: public, max-age=31536000, immutable
+X-Processor: edge-image
+X-Processing-Error: Image processing failed: ...
+
+[原始图片二进制]</code></pre>
+
+              <div class="callout callout--warn">
+                <svg class="icon" aria-hidden="true"><use href="#i-alert"></use></svg>
+                <p>
+                  <span class="callout-title">不要只看状态码</span>
+                  降级响应也是 <code>200</code>。需要严格保证输出格式时，请检查 <code>Content-Type</code> 与
+                  <code>X-Processing-Error</code> 响应头。
+                </p>
+              </div>
+            </section>
+
+            <!-- ============================ 元信息 ============================ -->
+            <section class="doc-section" id="metadata">
+              <h2>元信息查询</h2>
+              <p class="section-lead">
+                设置 <code>format=json</code> 后不返回图片，而是返回源媒体的尺寸、格式等信息。图片与视频返回的字段略有不同。
+              </p>
+
+              <div class="endpoint">
+                <span class="method method-get">GET</span>
+                <code class="endpoint-path">/api/media/&lt;encoded-source-url&gt;?format=json</code>
+                <button class="copy-btn" type="button" data-copy-text="/api/media/{encoded-source-url}?format=json">
+                  <svg class="icon" aria-hidden="true"><use href="#i-copy"></use></svg>
+                  <span class="copy-label">复制</span>
+                </button>
+              </div>
+
+              <h3>图片响应</h3>
+              <pre class="code" data-lang="json"><code>{
+  "width": 1600,
+  "height": 900,
+  "format": "jpeg",
+  "channels": 3,
+  "sourceUrl": "https://example.com/photo.jpg",
+  "sourceContentType": "image/jpeg",
+  "sourceSize": 2483921
+}</code></pre>
+
+              <h3>视频响应</h3>
+              <pre class="code" data-lang="json"><code>{
+  "width": 1920,
+  "height": 1080,
+  "codec": "h264",
+  "duration": 10.5,
+  "format": "mov,mp4,m4a,3gp,3g2,mj2",
+  "sourceUrl": "https://example.com/clip.mp4",
+  "sourceSize": 8349123
+}</code></pre>
+
+              <h3>字段说明</h3>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>字段</th><th>图片</th><th>视频</th><th>说明</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td><code>width</code></td><td>✓</td><td>✓</td><td>像素宽度</td></tr>
+                    <tr><td><code>height</code></td><td>✓</td><td>✓</td><td>像素高度</td></tr>
+                    <tr><td><code>format</code></td><td>✓</td><td>✓</td><td>图片格式或视频容器格式</td></tr>
+                    <tr><td><code>channels</code></td><td>✓</td><td>—</td><td>颜色通道数</td></tr>
+                    <tr><td><code>codec</code></td><td>—</td><td>✓</td><td>视频编码，如 <code>h264</code>、<code>vp9</code></td></tr>
+                    <tr><td><code>duration</code></td><td>—</td><td>✓</td><td>时长（秒）</td></tr>
+                    <tr><td><code>sourceUrl</code></td><td>✓</td><td>✓</td><td>原始媒体地址；内联图片为 <code>inline</code></td></tr>
+                    <tr><td><code>sourceContentType</code></td><td>✓</td><td>—</td><td>源文件的 MIME 类型</td></tr>
+                    <tr><td><code>sourceSize</code></td><td>✓</td><td>✓</td><td>源文件字节数</td></tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="callout">
+                <svg class="icon" aria-hidden="true"><use href="#i-info"></use></svg>
+                <p>
+                  图片元信息优先通过 Range 请求读取源文件前 <strong>64 KB</strong> 解析；解析失败时自动回退为完整下载。
+                  视频元信息读取前 <strong>512 KB</strong>，同样支持失败回退。
+                </p>
+              </div>
+            </section>
+
+            <!-- ============================ 视频封面 ============================ -->
+            <section class="doc-section" id="video">
+              <h2>视频封面</h2>
+              <p class="section-lead">
+                视频与图片共用 <code>/api/media</code>。服务端根据 URL 后缀识别 <code>.mp4</code> 与 <code>.webm</code>，
+                提取首帧后按图片参数处理，默认输出 WebP。
+              </p>
+
+              <div class="endpoint">
+                <span class="method method-get">GET</span>
+                <code class="endpoint-path">/api/media/&lt;encoded-video-url&gt;?width=1200&amp;height=675</code>
+                <button class="copy-btn" type="button" data-copy-text="/api/media/{encoded-video-url}?width=1200&height=675">
+                  <svg class="icon" aria-hidden="true"><use href="#i-copy"></use></svg>
+                  <span class="copy-label">复制</span>
+                </button>
+              </div>
+
+              <ul>
+                <li><strong>识别规则：</strong>URL 路径以 <code>.mp4</code> 或 <code>.webm</code> 结尾；允许后面带查询参数。</li>
+                <li><strong>首帧提取：</strong>先用 Range 请求读取前 512 KB 交给 ffmpeg；无法解码时自动回退为完整下载。</li>
+                <li><strong>后续处理：</strong>提取出的 JPEG 首帧继续应用 <code>width</code>、<code>height</code>、<code>crop</code>、<code>format</code> 等全部图片参数。</li>
+                <li><strong>元信息：</strong>使用 <code>format=json</code> 可获取视频宽高、编码、时长与容器格式。</li>
+              </ul>
+
+              <pre class="code" data-lang="html"><code>&lt;video poster="https://your-domain.com/api/media/https%3A%2F%2Fexample.com%2Fclip.mp4?width=1200" controls&gt;
+  &lt;source src="https://example.com/clip.mp4" type="video/mp4" /&gt;
+&lt;/video&gt;</code></pre>
+
+              <div class="callout">
+                <svg class="icon" aria-hidden="true"><use href="#i-info"></use></svg>
+                <p>
+                  视频封面会占用较长的处理时间（ffmpeg 提取 + 图片编码）。首帧提取结果与图片处理结果都会进入缓存，同一视频地址的后续请求会直接命中。
+                </p>
+              </div>
+            </section>
+
+            <!-- ============================ NSFW ============================ -->
+            <section class="doc-section" id="nsfw">
+              <h2>NSFW 分类</h2>
+              <p class="section-lead">
+                可选的五分类内容审核。开启后，单图响应从图片二进制变为 JSON，图片以标准 base64 返回，并附带分类概率。
+              </p>
+
+              <div class="endpoint">
+                <span class="method method-get">GET</span>
+                <code class="endpoint-path">/api/media/&lt;encoded-source-url&gt;?width=400&amp;format=png&amp;nsfw=1</code>
+                <button class="copy-btn" type="button" data-copy-text="/api/media/{encoded-source-url}?nsfw=1">
+                  <svg class="icon" aria-hidden="true"><use href="#i-copy"></use></svg>
+                  <span class="copy-label">复制</span>
+                </button>
+              </div>
+
+              <h3>参数取值</h3>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>取值</th><th>行为</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td>参数不存在</td><td>关闭分类</td></tr>
+                    <tr><td><code>?nsfw</code>、空值、<code>1</code>、<code>true</code>、<code>yes</code>、<code>on</code></td><td>开启分类</td></tr>
+                    <tr><td><code>0</code>、<code>false</code>、<code>no</code>、<code>off</code></td><td>关闭分类</td></tr>
+                    <tr><td>其他任意值</td><td><code>400 Bad Request</code></td></tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <h3>响应示例</h3>
+              <pre class="code" data-lang="json"><code>{
+  "width": 800,
+  "height": 600,
+  "format": "webp",
+  "contentType": "image/webp",
+  "image": "UklGRi...",
+  "nsfw": {
+    "drawing": 0.02,
+    "hentai": 0.01,
+    "safe": 0.91,
+    "porn": 0.03,
+    "sexy": 0.03,
+    "isNsfw": false
+  }
+}</code></pre>
+
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>字段</th><th>类型</th><th>说明</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td><code>width</code> / <code>height</code></td><td>integer</td><td>输出图片尺寸</td></tr>
+                    <tr><td><code>format</code> / <code>contentType</code></td><td>string</td><td>输出格式与 MIME 类型</td></tr>
+                    <tr><td><code>image</code></td><td>string</td><td>输出图片的标准 base64（无 data URI 前缀）</td></tr>
+                    <tr><td><code>nsfw.safe</code> 等</td><td>number</td><td>五个类别的概率，范围 0–1</td></tr>
+                    <tr><td><code>nsfw.isNsfw</code></td><td>boolean</td><td><code>hentai + porn + sexy ≥ NSFW_THRESHOLD</code>（默认 0.5）</td></tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <ul>
+                <li><strong>分类对象是源图</strong>（视频取封面帧），与输出尺寸、裁剪、格式无关；结果按源 URL 缓存。</li>
+                <li><strong>与元信息冲突：</strong><code>format=json</code> 与开启的 <code>nsfw</code> 同时使用返回 <code>400</code>；<code>format=json&amp;nsfw=0</code> 仍按元数据处理。</li>
+                <li><strong>批量：</strong>请求了 <code>nsfw</code> 的条目会在 <code>data.nsfw</code> 中返回分类结果；只有该条目失败时错误信息以 <code>nsfw:</code> 开头。</li>
+                <li><strong>不可用：</strong>模型或运行库缺失时单图返回 <code>503</code>，推理失败返回 <code>502</code>。</li>
+              </ul>
+
+              <div class="callout callout--success">
+                <svg class="icon" aria-hidden="true"><use href="#i-check"></use></svg>
+                <p>
+                  <span class="callout-title">安全与隐私</span>
+                  分类在本服务进程内完成，图片不会发送给第三方服务。模型为
+                  <code>viddexa/nsfw-detection-2-mini</code>（EfficientNet-B4），ONNX 权重需单独部署。
+                </p>
+              </div>
+            </section>
+
+            <!-- ============================ 同步批量 ============================ -->
+            <section class="doc-section" id="batch">
+              <h2>同步批量 <span class="method method-post">POST</span></h2>
+              <p class="section-lead">
+                一次请求处理多张图片。服务端先并发下载所有源文件，再并发处理，全部完成后返回以 <code>uuid</code>
+                为键的结果对象。
+              </p>
+
+              <div class="endpoint">
+                <span class="method method-post">POST</span>
+                <code class="endpoint-path">/api/batch</code>
+                <button class="copy-btn" type="button" data-copy-text="/api/batch">
+                  <svg class="icon" aria-hidden="true"><use href="#i-copy"></use></svg>
+                  <span class="copy-label">复制</span>
+                </button>
+              </div>
+
+              <ul class="meta-chips" aria-label="批量限制">
+                <li class="chip">最多 20 项</li>
+                <li class="chip">请求体 ≤ 256 MB</li>
+                <li class="chip">单张 base64 解码后 ≤ 50 MB</li>
+                <li class="chip">逐项成功 / 失败</li>
+              </ul>
+
+              <h3>请求体</h3>
+              <p class="section-lead" style="margin-bottom: 0">请求体是一个 JSON 数组，每个元素描述一张图片：</p>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td><code>uuid</code></td><td>string</td><td>是</td><td>唯一标识，用于关联结果；同一批次内不可重复</td></tr>
+                    <tr><td><code>url</code></td><td>string</td><td>二选一</td><td>http/https 图片地址；与 <code>base64</code> 互斥</td></tr>
+                    <tr><td><code>base64</code></td><td>string</td><td>二选一</td><td>内联图片数据，可带 <code>data:image/png;base64,</code> 前缀；与 <code>url</code> 互斥</td></tr>
+                    <tr><td><code>contentType</code></td><td>string</td><td>否</td><td>仅用于 <code>base64</code>；缺省时从图片字节自动推断</td></tr>
+                    <tr><td><code>params</code></td><td>object</td><td>否</td><td>处理参数，键名与单图查询参数一致，支持 <code>nsfw</code></td></tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <h3>请求示例</h3>
+              <pre class="code" data-lang="bash"><code>curl -X POST "https://your-domain.com/api/batch" \
   -H "Content-Type: application/json" \
   -d '[
-    {"uuid":"img-001","url":"https://example.com/a.jpg","params":{"width":200}},
-    {"uuid":"img-002","url":"https://example.com/b.png","params":{"format":"json"}}
-  ]'</pre>
-        <h3 style="margin: 24px 0 8px; font-size: 16px;">异步批量 <span style="font-size: 12px; color: var(--muted);">（最多 50 张，回调通知）</span></h3>
-        <div class="endpoint">
-          <code id="example-async-batch">POST /api/batch/async</code>
-          <button class="copy" type="button" data-copy="#example-async-batch-req">复制</button>
-        </div>
-        <pre id="example-async-batch-req" style="margin-top: 8px; padding: 12px; background: var(--code); color: #e9f1f7; border-radius: 8px; font-size: 13px; overflow-x: auto;">curl -X POST /api/batch/async \
+    {"uuid": "cover", "url": "https://example.com/a.jpg", "params": {"width": 800, "format": "webp"}},
+    {"uuid": "meta", "url": "https://example.com/b.png", "params": {"format": "json"}},
+    {"uuid": "inline", "base64": "iVBORw0KGgo...", "contentType": "image/png", "params": {"width": 256}}
+  ]'</code></pre>
+
+              <h3>响应示例</h3>
+              <pre class="code" data-lang="json"><code>{
+  "cover": {
+    "success": true,
+    "data": { "base64": "UklGRi...", "contentType": "image/webp" }
+  },
+  "meta": {
+    "success": true,
+    "data": {
+      "width": 1920,
+      "height": 1080,
+      "format": "png",
+      "channels": 4,
+      "sourceUrl": "https://example.com/b.png",
+      "sourceContentType": "image/png",
+      "sourceSize": 123456
+    }
+  },
+  "inline": {
+    "success": false,
+    "error": "Source fetch failed"
+  }
+}</code></pre>
+
+              <p class="section-lead">
+                <code>success=true</code> 时返回 <code>data</code>：普通图片为 <code>{base64, contentType}</code>，开启
+                <code>nsfw</code> 时额外带 <code>nsfw</code>，<code>format=json</code> 时为元信息对象。
+                <code>success=false</code> 时返回 <code>error</code> 字符串。单项失败不影响其他项。
+              </p>
+
+              <div class="callout callout--warn">
+                <svg class="icon" aria-hidden="true"><use href="#i-alert"></use></svg>
+                <p>
+                  <span class="callout-title">处理失败也会成功返回</span>
+                  单张图片解码或编码失败时，该项仍为 <code>success=true</code>，内容为源图原始字节。需要严格格式保证时，请依据
+                  <code>contentType</code> 做二次校验。
+                </p>
+              </div>
+
+              <h3>校验错误</h3>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>状态码</th><th>触发条件</th><th>错误信息示例</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td><code>400</code></td><td>请求体不是 JSON 数组</td><td><code>Request body must be a JSON array</code></td></tr>
+                    <tr><td><code>400</code></td><td>缺少 <code>uuid</code></td><td><code>Each image must have a string uuid</code></td></tr>
+                    <tr><td><code>400</code></td><td><code>uuid</code> 重复</td><td><code>Duplicate uuid: cover</code></td></tr>
+                    <tr><td><code>400</code></td><td><code>url</code> 与 <code>base64</code> 缺失或同时出现</td><td><code>Missing url or base64 for uuid: cover</code></td></tr>
+                    <tr><td><code>400</code></td><td>超过 20 项</td><td><code>Maximum 20 images allowed per batch</code></td></tr>
+                    <tr><td><code>413</code></td><td>请求体超过 256 MB</td><td><code>Request body too large</code></td></tr>
+                    <tr><td><code>405</code></td><td>方法不是 <code>POST</code></td><td><code>Method Not Allowed</code></td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <p class="table-note">空数组会直接返回 <code>200 {}</code>。</p>
+            </section>
+
+            <!-- ============================ 异步批量 ============================ -->
+            <section class="doc-section" id="async-batch">
+              <h2>异步批量 <span class="method method-post">POST</span></h2>
+              <p class="section-lead">
+                适合较大的批次：服务端立即返回 <code>202 Accepted</code>，在后台处理完成后向
+                <code>callbackUrl</code> POST 结果。回调失败会自动重试。
+              </p>
+
+              <div class="endpoint">
+                <span class="method method-post">POST</span>
+                <code class="endpoint-path">/api/batch/async</code>
+                <button class="copy-btn" type="button" data-copy-text="/api/batch/async">
+                  <svg class="icon" aria-hidden="true"><use href="#i-copy"></use></svg>
+                  <span class="copy-label">复制</span>
+                </button>
+              </div>
+
+              <ul class="meta-chips" aria-label="异步批量限制">
+                <li class="chip">最多 50 项</li>
+                <li class="chip">立即返回 202</li>
+                <li class="chip">回调最多重试 3 次</li>
+                <li class="chip">逐项成功 / 失败</li>
+              </ul>
+
+              <h3>请求体</h3>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td><code>items</code></td><td>array</td><td>是</td><td>图片列表，元素格式与同步批量完全相同</td></tr>
+                    <tr><td><code>callbackUrl</code></td><td>string</td><td>是</td><td>处理完成后接收结果的 http/https 地址</td></tr>
+                    <tr><td><code>jobId</code></td><td>string</td><td>否</td><td>自定义任务 ID；不填时自动生成 <code>ej-&lt;timestamp&gt;</code></td></tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <h3>请求示例</h3>
+              <pre class="code" data-lang="bash"><code>curl -X POST "https://your-domain.com/api/batch/async" \
   -H "Content-Type: application/json" \
   -d '{
     "items": [
-      {"uuid":"img-001","url":"https://example.com/a.jpg","params":{"width":200}}
+      {"uuid": "cover", "url": "https://example.com/a.jpg", "params": {"width": 800}}
     ],
-    "callbackUrl": "https://your-service.com/callback",
-    "jobId": "my-job-123"
-  }'</pre>
-        <p style="margin-top: 8px; color: var(--muted); font-size: 13px;">
-          服务端立即返回 <code>202 Accepted</code>，处理完成后通过 <code>callbackUrl</code> POST 回调结果。
-        </p>
-      </section>
+    "callbackUrl": "https://your-service.example/callback",
+    "jobId": "job-2026-001"
+  }'</code></pre>
 
-      <section id="platform" aria-labelledby="platform-title">
-        <h2 id="platform-title">平台配置</h2>
-        <table style="width:100%; border-collapse:collapse; font-size:14px; margin-top:12px;">
-          <thead>
-            <tr style="border-bottom:2px solid var(--line); text-align:left;">
-              <th style="padding:8px 12px;">配置项</th>
-              <th style="padding:8px 12px;">默认值</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr style="border-bottom:1px solid var(--line);">
-              <td style="padding:8px 12px;">最大输出尺寸</td>
-              <td style="padding:8px 12px;">2048px</td>
-            </tr>
-            <tr style="border-bottom:1px solid var(--line);">
-              <td style="padding:8px 12px;">默认质量</td>
-              <td style="padding:8px 12px;">90</td>
-            </tr>
-            <tr style="border-bottom:1px solid var(--line);">
-              <td style="padding:8px 12px;">批量处理</td>
-              <td style="padding:8px 12px;">支持（同步最多 20 张，异步最多 50 张）</td>
-            </tr>
-            <tr style="border-bottom:1px solid var(--line);">
-              <td style="padding:8px 12px;">缓存策略</td>
-              <td style="padding:8px 12px;">ristretto 内存 + 文件系统磁盘</td>
-            </tr>
-            <tr style="border-bottom:1px solid var(--line);">
-              <td style="padding:8px 12px;">内存缓存</td>
-              <td style="padding:8px 12px;">3072 MB</td>
-            </tr>
-            <tr>
-              <td style="padding:8px 12px;">磁盘缓存</td>
-              <td style="padding:8px 12px;">50 GB</td>
-            </tr>
-          </tbody>
-        </table>
-      </section>
-    </main>
+              <h3>即时响应</h3>
+              <pre class="code" data-lang="http"><code>HTTP/1.1 202 Accepted
+Content-Type: application/json; charset=utf-8
 
-    <footer>
-      <div class="shell">Powered by Go, govips, and ffmpeg</div>
+{
+  "jobId": "job-2026-001",
+  "status": "accepted"
+}</code></pre>
+
+              <h3>回调请求</h3>
+              <p class="section-lead" style="margin-bottom: 0">
+                处理结束后，服务端向 <code>callbackUrl</code> 发送 <code>POST</code> 请求：
+              </p>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>请求头</th><th>值</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td><code>Content-Type</code></td><td><code>application/json; charset=utf-8</code></td></tr>
+                    <tr><td><code>X-Job-ID</code></td><td>任务 ID</td></tr>
+                    <tr><td><code>User-Agent</code></td><td><code>Mozilla/5.0 (compatible; EdgeImage/1.0)</code></td></tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <pre class="code" data-lang="json"><code>{
+  "jobId": "job-2026-001",
+  "status": "completed",
+  "items": [
+    {
+      "uuid": "cover",
+      "url": "https://example.com/a.jpg",
+      "params": { "width": 800 }
+    }
+  ],
+  "results": {
+    "cover": {
+      "success": true,
+      "data": { "base64": "UklGRi...", "contentType": "image/webp" }
+    }
+  },
+  "timestamp": "2026-06-01T12:00:00Z"
+}</code></pre>
+
+              <ul>
+                <li><code>status</code> 为 <code>completed</code>（全部成功）或 <code>partial</code>（存在失败项）。</li>
+                <li><code>items</code> 回显原始请求项（<code>uuid</code>、<code>url</code>、<code>contentType</code>、<code>params</code>），内联图片不会回显 base64。</li>
+                <li><code>results</code> 与同步批量响应结构完全一致。</li>
+                <li>回调返回任意 <code>2xx</code> 视为成功；否则最多重试 3 次，间隔依次为 1 秒、2 秒。</li>
+              </ul>
+
+              <div class="callout callout--warn">
+                <svg class="icon" aria-hidden="true"><use href="#i-alert"></use></svg>
+                <p>
+                  <span class="callout-title">回调端点必须可公网访问</span>
+                  服务端由后台任务发起回调，请确保 <code>callbackUrl</code> 可被服务器访问，并尽快返回
+                  <code>2xx</code>，避免因超时触发重试。
+                </p>
+              </div>
+            </section>
+
+            <!-- ============================ 响应与缓存 ============================ -->
+            <section class="doc-section" id="responses">
+              <h2>响应与缓存</h2>
+              <p class="section-lead">
+                所有成功响应都带 long-lived 缓存策略；处理参数参与缓存键，因此同一个 URL 可以安全地生成任意多个尺寸与格式的变体。
+              </p>
+
+              <h3>响应头</h3>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>响应头</th><th>出现场景</th><th>说明</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td><code>Content-Type</code></td><td>全部</td><td>图片 MIME 类型、<code>application/json</code> 或错误 JSON</td></tr>
+                    <tr><td><code>Cache-Control</code></td><td>成功响应</td><td><code>public, max-age=31536000, immutable</code></td></tr>
+                    <tr><td><code>X-Processor</code></td><td>处理响应</td><td><code>edge-image</code></td></tr>
+                    <tr><td><code>X-Image-Width</code></td><td>图片处理成功</td><td>输出宽度（px）</td></tr>
+                    <tr><td><code>X-Image-Height</code></td><td>图片处理成功</td><td>输出高度（px）</td></tr>
+                    <tr><td><code>X-Image-Format</code></td><td>图片处理成功</td><td>输出格式，如 <code>webp</code></td></tr>
+                    <tr><td><code>X-Image-Size</code></td><td>图片处理成功</td><td>输出字节数</td></tr>
+                    <tr><td><code>X-Cache</code></td><td>命中缓存</td><td><code>HIT</code></td></tr>
+                    <tr><td><code>X-Processing-Error</code></td><td>降级响应</td><td>处理失败原因（仅 ASCII 字符）</td></tr>
+                    <tr><td><code>Allow</code></td><td><code>405</code></td><td>允许的方法，如 <code>GET</code> / <code>POST</code></td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <p class="table-note">命中已处理缓存时，为保证低延迟，部分 <code>X-Image-*</code> 头可能省略。</p>
+
+              <h3>缓存行为</h3>
+              <ul>
+                <li><strong>两级缓存：</strong>进程内 Ristretto（TinyLFU）+ 文件系统磁盘缓存；Docker 部署下自动启用。</li>
+                <li><strong>缓存键：</strong>源文件、元信息、处理结果分别缓存；处理结果包含全部处理参数，参数变化即生成新条目。</li>
+                <li><strong>NSFW：</strong>预测按源 URL + 模型版本 + 阈值缓存，调整模型或阈值会自动失效。</li>
+                <li><strong>失效策略：</strong>结果带 <code>immutable</code>，适合长期 CDN 缓存；源内容变化时请更换源 URL 或使用不同参数。</li>
+              </ul>
+
+              <h3>上游下载</h3>
+              <ul>
+                <li>普通图片下载超时 <strong>20 秒</strong>，单文件上限 <strong>50 MB</strong>。</li>
+                <li>对 <code>403</code>、<code>429</code>、<code>500</code>、<code>502</code>、<code>503</code>、<code>504</code> 自动重试，最多 3 次，退避 0.5 / 1 / 2 秒。</li>
+                <li>视频 Range 请求超时 30 秒，完整下载回退超时 120 秒。</li>
+              </ul>
+            </section>
+
+            <!-- ============================ 错误处理 ============================ -->
+            <section class="doc-section" id="errors">
+              <h2>错误处理</h2>
+              <p class="section-lead">
+                错误以 JSON 返回，通常包含 <code>error</code>，部分场景附加 <code>details</code>（已过滤为可安全放入响应头的 ASCII 文本）。
+              </p>
+
+              <pre class="code" data-lang="json"><code>{
+  "error": "Bad Gateway",
+  "details": "fetch source: upstream timeout"
+}</code></pre>
+
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>状态码</th><th>场景</th><th>典型响应</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td><code>200</code></td><td>处理成功、降级返回原图、批量部分失败</td><td>图片 / JSON</td></tr>
+                    <tr><td><code>202</code></td><td>异步批量已接受</td><td><code>{"jobId":"…","status":"accepted"}</code></td></tr>
+                    <tr><td><code>400</code></td><td>缺少源地址、协议非法、域名不在白名单、参数冲突、批量校验失败</td><td><code>{"error":"…"}</code></td></tr>
+                    <tr><td><code>405</code></td><td>请求方法不正确</td><td><code>{"error":"Method Not Allowed"}</code></td></tr>
+                    <tr><td><code>413</code></td><td>批量请求体超过 256 MB</td><td><code>{"error":"Request body too large"}</code></td></tr>
+                    <tr><td><code>502</code></td><td>源媒体下载失败、ffprobe/ffmpeg 失败、NSFW 推理失败</td><td><code>{"error":"Bad Gateway","details":"…"}</code></td></tr>
+                    <tr><td><code>503</code></td><td>NSFW 分类器不可用（模型或运行库缺失）</td><td><code>{"error":"Service Unavailable","details":"nsfw classifier is not available"}</code></td></tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <h3>常见错误</h3>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>错误信息</th><th>处理方式</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td><code>Missing source URL</code></td><td>检查 <code>/api/media/</code> 后是否包含编码后的地址</td></tr>
+                    <tr><td><code>url must use http or https</code></td><td>仅支持 http/https，不支持 data URI 等协议（批量请用 <code>base64</code> 字段）</td></tr>
+                    <tr><td><code>url host is not allowed by IMAGE_URL_ALLOWLIST</code></td><td>把源域名加入部署环境的白名单</td></tr>
+                    <tr><td><code>invalid nsfw value "…"</code></td><td>使用允许的布尔写法或移除该参数</td></tr>
+                    <tr><td><code>nsfw is not supported with format=json</code></td><td>元信息与 NSFW 分类分开请求</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <!-- ============================ 白名单 ============================ -->
+            <section class="doc-section" id="allowlist">
+              <h2>域名白名单</h2>
+              <p class="section-lead">
+                生产环境建议配置 <code>IMAGE_URL_ALLOWLIST</code>，限制接口只能下载可信域名下的媒体，防止被当作开放代理滥用。
+              </p>
+
+              <pre class="code" data-lang="bash"><code>IMAGE_URL_ALLOWLIST=example.com,trusted-cdn.com</code></pre>
+
+              <ul>
+                <li>使用英文逗号或空格分隔，大小写不敏感。</li>
+                <li>写根域名 <code>example.com</code> 会同时允许其所有子域名，如 <code>cdn.example.com</code>。</li>
+                <li>单独的 <code>*</code> 表示允许所有域名，仅建议本地开发使用。</li>
+                <li>变量留空或未设置时允许所有域名。</li>
+              </ul>
+
+              <div class="callout callout--warn">
+                <svg class="icon" aria-hidden="true"><use href="#i-alert"></use></svg>
+                <p>
+                  <span class="callout-title">白名单同样适用于批量和视频</span>
+                  批量接口的 <code>url</code> 字段、视频地址都会经过同一套白名单校验；内联 <code>base64</code> 图片不经过域名校验。
+                </p>
+              </div>
+            </section>
+
+            <!-- ============================ 环境变量 ============================ -->
+            <section class="doc-section" id="environment">
+              <h2>环境变量</h2>
+              <p class="section-lead">以下变量用于调整服务行为，修改后需要重启进程。</p>
+
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>变量</th><th>默认值</th><th>说明</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td><code>PORT</code></td><td><code>3000</code></td><td>HTTP 监听端口</td></tr>
+                    <tr><td><code>PLATFORM</code></td><td><code>huggingface</code></td><td>部署平台预设；未知值回退为默认预设</td></tr>
+                    <tr><td><code>MAX_DIMENSION</code></td><td><code>2048</code></td><td>输出尺寸上限（px）</td></tr>
+                    <tr><td><code>DEFAULT_QUALITY</code></td><td><code>90</code></td><td>默认输出质量 1–100</td></tr>
+                    <tr><td><code>CACHE_MAX_MEMORY_MB</code></td><td><code>3072</code></td><td>内存缓存上限（MB）</td></tr>
+                    <tr><td><code>CACHE_MAX_DISK_GB</code></td><td><code>50</code></td><td>磁盘缓存上限（GB）</td></tr>
+                    <tr><td><code>IMAGE_URL_ALLOWLIST</code></td><td>允许全部</td><td>源媒体域名白名单</td></tr>
+                    <tr><td><code>IMAGE_DEBUG_LOGS</code></td><td><code>0</code></td><td>设为 <code>1</code> 启用调试日志</td></tr>
+                    <tr><td><code>NSFW_MODEL_PATH</code></td><td><code>/data/models/nsfw_detection_2_mini.onnx</code></td><td>NSFW ONNX 模型路径；文件缺失时功能禁用</td></tr>
+                    <tr><td><code>ONNXRUNTIME_LIB_PATH</code></td><td>—</td><td>ONNX Runtime 动态库路径；Docker 镜像内已设置</td></tr>
+                    <tr><td><code>NSFW_THRESHOLD</code></td><td><code>0.5</code></td><td><code>isNsfw</code> 判定阈值（0–1）；非法值会禁用分类器</td></tr>
+                    <tr><td><code>NSFW_CONCURRENCY</code></td><td><code>2</code></td><td>并发推理上限；非法值回落为 2</td></tr>
+                    <tr><td><code>PUBLIC_DIR</code></td><td><code>./public</code></td><td>静态文档目录</td></tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="callout callout--success">
+                <svg class="icon" aria-hidden="true"><use href="#i-check"></use></svg>
+                <p>
+                  <span class="callout-title">部署提示</span>
+                  NSFW 模型不随仓库或镜像分发。使用分类功能时，将
+                  <code>nsfw_detection_2_mini.onnx</code> 挂载到 <code>/data/models</code>，或通过
+                  <code>NSFW_MODEL_PATH</code> 指向实际位置。
+                </p>
+              </div>
+            </section>
+          </article>
+        </div>
+      </main>
+
+      <aside class="toc" aria-label="本页目录">
+        <p class="toc-title">本页目录</p>
+        <ul>
+          <li><a href="#overview">概览与接入</a></li>
+          <li><a href="#quickstart">快速开始</a></li>
+          <li><a href="#single-image">单图处理</a></li>
+          <li><a href="#metadata">元信息查询</a></li>
+          <li><a href="#video">视频封面</a></li>
+          <li><a href="#nsfw">NSFW 分类</a></li>
+          <li><a href="#batch">同步批量</a></li>
+          <li><a href="#async-batch">异步批量</a></li>
+          <li><a href="#responses">响应与缓存</a></li>
+          <li><a href="#errors">错误处理</a></li>
+          <li><a href="#allowlist">域名白名单</a></li>
+          <li><a href="#environment">环境变量</a></li>
+        </ul>
+      </aside>
+    </div>
+
+    <footer class="site-footer">
+      Edge Image · API v1 · Powered by Go, libvips &amp; ffmpeg
     </footer>
 
-    <script>
-      document.querySelectorAll('[data-copy]').forEach((button) => {
-        button.addEventListener('click', async () => {
-          const target = document.querySelector(button.dataset.copy);
-          if (!target) return;
-          await navigator.clipboard.writeText(target.textContent.trim());
-          const oldText = button.textContent;
-          button.textContent = '已复制';
-          window.setTimeout(() => {
-            button.textContent = oldText;
-          }, 1200);
-        });
-      });
-    </script>
+    <div class="sr-only" id="sr-status" role="status" aria-live="polite"></div>
+    <script src="/app.js" defer></script>
   </body>
 </html>

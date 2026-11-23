@@ -67,6 +67,8 @@ docker run -p 3000:3000 -v edge-cache:/data -v "$PWD/models:/data/models:ro" \
 
 ## API
 
+完整的接口文档（含参数表、响应示例、在线复制与明暗主题）由服务直接托管在根路径 `/`。
+
 ### 单图处理
 
 ```text
