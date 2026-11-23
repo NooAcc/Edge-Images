@@ -2,7 +2,7 @@ FROM python:3.12-slim AS onnxruntime
 
 RUN pip install --no-cache-dir --target=/ort onnxruntime==1.31.0
 
-FROM golang:1.25-bookworm AS builder
+FROM golang:1.26-bookworm AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
