@@ -1,0 +1,14 @@
+{
+  "name": "edge-images-docs",
+  "private": true,
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "test": "node --test tests/web/*.test.cjs",
+    "vendor:docs": "node tools/vendor-docs.cjs"
+  },
+  "devDependencies": {
+    "dompurify": "3.5.0",
+    "jsdom": "31.0.1",
+    "marked": "18.3.0"
+  }
+}

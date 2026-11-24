@@ -138,7 +138,7 @@
       var token = m[0];
       if (token.charAt(0) === '"') {
         if (m[1]) {
-          out += '<span class="tok-key">' + esc(token) + '</span>' +
+          out += '<span class="tok-key">' + esc(token.slice(0, -m[1].length)) + '</span>' +
             '<span class="tok-punct">' + esc(m[1]) + '</span>';
         } else {
           out += '<span class="tok-str">' + esc(token) + '</span>';
@@ -490,9 +490,19 @@
     if (window.innerWidth > 960 && sidebarOpen) closeSidebar(false);
   });
 
-  /* Re-render highlight when content changes are made after load. */
-  window.EdgeDocs = {
-    highlight: highlight,
-    enhanceCodeBlocks: enhanceCodeBlocks
-  };
+  /* The document body arrives asynchronously; base UI handlers above and
+     below are delegated or installed once. Refresh only content references. */
+  function refreshDocumentation() {
+    enhanceCodeBlocks();
+    sections = $$('.doc-section[id]');
+    anchoredLinks = $$('.sidebar-nav a[href^="#"], .toc a[href^="#"]');
+    filterNav();
+    updateActiveSection();
+  }
+
+  document.addEventListener('edge-docs-ready', refreshDocumentation);
+  window.EdgeDocs = window.EdgeDocs || {};
+  window.EdgeDocs.highlight = highlight;
+  window.EdgeDocs.enhanceCodeBlocks = enhanceCodeBlocks;
+  if ($('#doc-body') && window.EdgeDocs.load) window.EdgeDocs.load();
 })();

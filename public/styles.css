@@ -1,3 +1,47 @@
+/* Markdown body and asynchronous loading states. Existing theme/layout tokens
+   remain shared with the original documentation shell. */
+#doc-body {
+  overflow-wrap: anywhere;
+}
+
+#doc-body h2,
+#doc-body h3,
+#doc-body h4 {
+  scroll-margin-top: calc(var(--header-h) + 24px);
+}
+
+#doc-body .doc-section > p:first-of-type {
+  color: var(--fg-muted);
+}
+
+#doc-body blockquote {
+  margin: 20px 0;
+  padding: 12px 18px;
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+#doc-body blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+.doc-state {
+  margin: 24px 0;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--fg-muted);
+}
+
+#doc-retry {
+  min-height: 44px;
+  padding: 8px 16px;
+  border: 1px solid var(--border-strong);
+  color: var(--accent);
+}
+
 /* ==========================================================================
    Edge Image — API documentation design system
    Minimalism & Swiss style · developer-first · light + dark

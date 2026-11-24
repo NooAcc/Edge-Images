@@ -11,7 +11,7 @@ edge-image
 *.out
 go.work
 
-# Node.js (OLD/)
+# Node.js development and tests
 node_modules/
 coverage/
 npm-debug.log*
